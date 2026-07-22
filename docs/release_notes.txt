@@ -1,0 +1,36 @@
+VGArm 0.1.2 Release
+====================
+
+可靠控制更新
+- 分阶段控制：自由空间快速、持物稳速、抓放末端精确低速
+- 仅在目标最后 6 cm 使用精确路径，兼顾速度与抓取成功率
+- 从机器人模型的 home 关键帧初始化，避免非法零关节状态
+- 阻尼最小二乘 IK 同时控制末端位置和姿态
+- 增加关节限位、安全高度分段路径、机器人/物体碰撞监控
+- 修正放置高度计算，避免物体和末端穿透地面
+- 增加抓取、抬升、放置验证以及失败恢复
+- 支持通过 VGARM_MENAGERIE_ROOT 指定机器人资产路径
+
+包含内容
+- vgarm/dist/vgarm-0.1.2-py3-none-any.whl
+- vgarm/docs/architecture.md
+- vgarm/docs/scene_schema.md
+- vgarm/examples/basic_scene.json
+
+安装
+1) 安装核心包
+   python -m pip install --force-reinstall vgarm/dist/vgarm-0.1.2-py3-none-any.whl
+2) 可选：图片应用GUI预览（Pillow）
+   python -m pip install "vgarm[gui]"
+
+快速体验
+- 有窗口演示：
+  vgarm --robot franka_fr3 --scene vgarm/examples/basic_scene.json --cmd "把红色方块移到左边"
+- 无窗口运行：
+  vgarm --robot franka_fr3 --scene vgarm/examples/basic_scene.json --cmd "交换红色方块和蓝色方块位置" --no-viewer
+- 图片应用（可自动执行）：
+  vgarm-image --scene vgarm/examples/basic_scene.json --cmd "交换红色方块和蓝色方块位置" --autorun --no-viewer
+
+注意事项
+- 需要MuJoCo 3.x与Menagerie机器人资产，路径需与 vgarm/mjc/robots.py 中配置一致
+- SceneLayout JSON规范与坐标系/单位：见 vgarm/docs/scene_schema.md

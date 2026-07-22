@@ -1,0 +1,3 @@
+[console_scripts]
+vgarm = vgarm.cli:main
+vgarm-image = vgarm_app.image_app:main

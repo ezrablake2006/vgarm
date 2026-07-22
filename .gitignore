@@ -1,0 +1,10 @@
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.vscode/
+.idea/
+_vgarm_scene_*.xml
+
+# 第三方机器人模型不直接提交
+third_party/mujoco_menagerie/

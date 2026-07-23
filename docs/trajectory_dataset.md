@@ -1,8 +1,9 @@
-# VGArm Trajectory Dataset v1
+# VGArm Trajectory Dataset v1.1
 
-VGArm 0.3.0 records the same `MjModel`, `MjData`, controller outputs and physics
-steps used by normal tasks and benchmarks. It does not reconstruct trajectories
-from waypoints or logs.
+VGArm 0.4.0 records the same `MjModel`, `MjData`, controller outputs and physics
+steps used by normal tasks and benchmarks. Optional RGB comes from named MuJoCo
+cameras on that same model/data. It does not reconstruct trajectories from
+waypoints or logs, and RGB does not control the robot.
 
 ## Time alignment
 
@@ -10,14 +11,20 @@ from waypoints or logs.
 controller first writes `data.ctrl`; the recorder then samples observation
 `o_t`, the actual pending control `a_t`, Cartesian/joint targets and structured
 phase fields; exactly one `mujoco.mj_step()` follows. The next row is `o_{t+1}`.
-Thus each Parquet row means:
+Optional RGB is rendered at that same pre-step moment. A sampled row means:
 
 ```text
-(o_t, a_t) -> o_{t+1}
+(I_t, o_t, a_t) -> o_{t+1}
 ```
 
 The final observation is stored separately in the final NPZ. `timestamp` is
 MuJoCo simulation time and adjacent rows differ by `model.opt.timestep`.
+
+RGB uses an exact rational schedule relative to the first recorded row. Frame
+zero is sampled on row zero. For each later ideal time `n / rgb_fps`, the first
+physics row at or after that time is selected. Error stays in
+`[0, physics_timestep)` without cumulative drift. With 46,579 rows at 0.002
+seconds and 20 Hz, this endpoint rule produces 1,864 frames.
 
 ## Generate and use
 
@@ -35,6 +42,17 @@ vgarm dataset stats datasets/vgarm_fr3_state_v1
 vgarm dataset replay datasets/vgarm_fr3_state_v1 --episode-id 0 --no-viewer
 ```
 
+```bash
+pip install "vgarm[rgb]"
+MUJOCO_GL=egl vgarm dataset generate \
+  --scene examples/basic_scene.json \
+  --tasks examples/trajectory_tasks.json \
+  --robots franka_fr3 --episodes 1 --seed 42 \
+  --position-jitter 0.03 --modalities state,rgb \
+  --cameras camera_front --rgb-width 640 --rgb-height 480 --rgb-fps 20 \
+  --no-viewer --output datasets/vgarm_fr3_rgb_v1
+```
+
 `--overwrite` deletes an existing output dataset; `--resume` instead requires
 the exact stored configuration fingerprint and skips completed episode IDs.
 They are mutually exclusive. A multi-robot request creates one independently
@@ -49,7 +67,7 @@ root/
   states/episode_000000_initial.npz
   states/episode_000000_final.npz
   logs/
-  videos/
+  videos/episode_000000/camera_front.mp4
   manifest.json
   summary.md
 ```
@@ -60,6 +78,12 @@ is fsynced to `episodes.jsonl`. Validation and statistics ignore incomplete
 episodes. Resume removes and deterministically regenerates only the incomplete
 episode.
 
+RGB is streamed first to
+`.incomplete/episode_XXXXXX/videos/<camera>.tmp.mp4`. Writers are closed and
+flushed, and the first/middle/last frame plus total count are decoded before
+formal files are moved. Video checksums and metadata are finalized before the
+completed episode line is fsynced.
+
 ## Schema and action meaning
 
 Rows contain frame/simulation indices, simulation timestamp and timestep;
@@ -67,6 +91,11 @@ actuated joint positions and velocities; actual `data.ctrl`; end-effector pose
 and spatial velocity; ordered object poses and velocities; held-object state;
 low-level and canonical actions; controller skill, phase, waypoint, IK and
 error fields; and terminal status.
+
+Schema 1.1 adds nullable `visual_observation.rgb_frame_index` and
+`rgb_timestamp`. Only sampled rows contain them. Indices start at zero and are
+continuous; all cameras share the same index. Video frame N therefore joins
+uniquely to one physics row, `o_t` and the actual `a_t`.
 
 - `action.ctrl`: the exact actuator vector present in `data.ctrl` immediately
   before the next `mj_step`; replay uses this field directly.
@@ -114,11 +143,17 @@ duration, throughput/storage, task and phase counts, joint/action moments,
 object workspace and average episode length. Wall-clock values are excluded
 from deterministic fingerprints.
 
-## RGB and LeRobot
+## RGB compatibility and LeRobot
 
-The 0.3.0 state-only core is independent of image codecs. RGB recording is
-reserved in the directory/schema but is not enabled in this release; requesting
-`state,rgb` fails explicitly rather than producing an unverified video.
+RGB uses `imageio` and its bundled `imageio-ffmpeg` executable. Output is MP4,
+H.264, yuv420p. Renderer and writer are reused for the episode; only scheduled
+rows render, and frames are never accumulated in Python memory.
+
+Dataset/schema 1.0 from VGArm 0.3.0 remains readable, validatable, stat-able and
+replayable. It has no visual column or video requirement. Schema 1.1 makes RGB
+optional, so state-only installation still needs no codec package. Validator
+checks checksums, decoding, frame count, resolution, camera sets, continuous
+Parquet mappings, matching simulation timestamps and orphaned formal videos.
 
 LeRobot is optional:
 
@@ -133,4 +168,3 @@ loader. It never constructs a look-alike directory. LeRobot is not installed
 in the project Python 3.14 validation environment, so conversion should be run
 in a separate LeRobot-supported environment. Native recording remains the
 source of truth.
-

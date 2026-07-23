@@ -14,6 +14,7 @@ from vgarm import __version__
 
 from .schema import build_schema
 from .util import atomic_json, sha256_file
+from .cameras import EpisodeRgbRecorder, validate_rgb_configuration
 
 
 STATE_SPEC = mujoco.mjtState.mjSTATE_INTEGRATION
@@ -37,6 +38,13 @@ class TrajectoryRecorder:
         *,
         initial_object_positions: dict,
         viewer_enabled: bool,
+        modalities: tuple[str, ...] = ("state",),
+        cameras: tuple[str, ...] = (),
+        rgb_width: int = 640,
+        rgb_height: int = 480,
+        rgb_fps: float = 20.0,
+        renderer_factory=None,
+        writer_factory=None,
     ):
         self.root = dataset_root
         self.episode_id = episode_id
@@ -49,11 +57,45 @@ class TrajectoryRecorder:
         self.object_names = tuple(executor.object_names)
         self.initial_object_positions = initial_object_positions
         self.viewer_enabled = viewer_enabled
+        self.modalities = modalities
+        validate_rgb_configuration(
+            modalities, cameras, rgb_width, rgb_height, rgb_fps
+        )
         self.rows: list[dict] = []
         self.started = time.monotonic()
-        self.schema = build_schema(executor, self.object_names)
         self.incomplete = self.root / ".incomplete" / f"episode_{episode_id:06d}"
         self.incomplete.mkdir(parents=True, exist_ok=False)
+        self.rgb = None
+        camera_schema = {}
+        if "rgb" in modalities:
+            if not cameras:
+                raise ValueError("RGB recording requires at least one --cameras name")
+            self.rgb = EpisodeRgbRecorder(
+                self.model,
+                self.data,
+                self.incomplete / "videos",
+                cameras=cameras,
+                width=rgb_width,
+                height=rgb_height,
+                fps=rgb_fps,
+                renderer_factory=renderer_factory,
+                writer_factory=writer_factory,
+            )
+            camera_schema = {
+                "cameras": list(cameras),
+                "width": rgb_width,
+                "height": rgb_height,
+                "requested_fps": rgb_fps,
+                "codec": "h264",
+                "pixel_format": "yuv420p",
+                "container": "mp4",
+            }
+        self.schema = build_schema(
+            executor,
+            self.object_names,
+            modalities=modalities,
+            camera_schema=camera_schema,
+        )
         self.initial_state = self._capture_state()
         self.initial_state["observation_json"] = np.asarray(
             json.dumps(self._observation(), ensure_ascii=False)
@@ -163,6 +205,10 @@ class TrajectoryRecorder:
                 + (_quat_from_matrix(target_orientation) if target_orientation is not None else [None] * 4)
             ),
         }
+        visual = (
+            self.rgb.sample(len(self.rows), float(self.data.time))
+            if self.rgb is not None else None
+        )
         self.rows.append({
             "episode_id": self.episode_id,
             "frame_index": len(self.rows),
@@ -182,6 +228,7 @@ class TrajectoryRecorder:
                 "collision_active": False,
                 "grasp_active": executor._held_object is not None,
             },
+            "visual_observation": visual,
             "terminated": False,
             "truncated": False,
             "success": None,
@@ -189,11 +236,14 @@ class TrajectoryRecorder:
         })
 
     def abort(self, reason: str) -> None:
+        if self.rgb is not None:
+            self.rgb.abort()
         (self.incomplete / "ABORTED").write_text(reason, encoding="utf-8")
 
     def commit(self, result, *, model_xml_hash: str, asset_manifest_hash: str) -> dict:
         if not self.rows:
             raise ValueError("cannot commit empty trajectory episode")
+        video_metadata = self.rgb.close() if self.rgb is not None else {}
         self.rows[-1]["terminated"] = True
         self.rows[-1]["success"] = bool(result.task_success)
         self.rows[-1]["failure_category"] = result.failure_category
@@ -224,14 +274,41 @@ class TrajectoryRecorder:
             "initial": self.root / "states" / f"{episode_name}_initial.npz",
             "final": self.root / "states" / f"{episode_name}_final.npz",
         }
-        for directory in ("data", "states"):
+        for directory in ("data", "states", "videos"):
             (self.root / directory).mkdir(parents=True, exist_ok=True)
-        os.replace(parquet, paths["trajectory"])
-        os.replace(self.incomplete / "initial.npz", paths["initial"])
-        os.replace(self.incomplete / "final.npz", paths["final"])
-        shutil.rmtree(self.incomplete)
+        final_videos = {}
+        moved = []
+        video_directory = self.root / "videos" / episode_name
+        try:
+            os.replace(parquet, paths["trajectory"])
+            moved.append(paths["trajectory"])
+            os.replace(self.incomplete / "initial.npz", paths["initial"])
+            moved.append(paths["initial"])
+            os.replace(self.incomplete / "final.npz", paths["final"])
+            moved.append(paths["final"])
+            if video_metadata:
+                video_directory.mkdir(parents=True, exist_ok=False)
+                for name, item in video_metadata.items():
+                    source = Path(item.pop("temporary_path"))
+                    target = video_directory / f"{name}.mp4"
+                    os.replace(source, target)
+                    moved.append(target)
+                    final_videos[name] = {
+                        **item,
+                        "path": str(target.relative_to(self.root)),
+                        "sha256": sha256_file(target),
+                        "bytes": target.stat().st_size,
+                    }
+            shutil.rmtree(self.incomplete)
+        except Exception:
+            for path in reversed(moved):
+                path.unlink(missing_ok=True)
+            video_directory = self.root / "videos" / episode_name
+            if video_directory.exists():
+                shutil.rmtree(video_directory)
+            raise
         metadata = {
-            "dataset_schema_version": "1.0",
+            "dataset_schema_version": "1.1",
             "episode_id": self.episode_id,
             "robot": result.robot,
             "task_id": result.task_id,
@@ -254,7 +331,7 @@ class TrajectoryRecorder:
             "initial_state_file": str(paths["initial"].relative_to(self.root)),
             "final_state_file": str(paths["final"].relative_to(self.root)),
             "trajectory_file": str(paths["trajectory"].relative_to(self.root)),
-            "video_files": {},
+            "video_files": final_videos,
             "initial_object_positions": result.initial_object_positions,
             "planned_target_position": result.planned_target_position,
             "target_adjusted": (
@@ -276,9 +353,9 @@ class TrajectoryRecorder:
             "attachment_site": self.executor.robot.attachment_site_name,
             "action_representation": self.schema["action_representation"],
             "observation_schema": self.schema["dimensions"],
-            "camera_schema": {},
+            "camera_schema": self.schema["camera_schema"],
             "viewer_enabled": self.viewer_enabled,
-            "recording_modalities": ["state"],
+            "recording_modalities": list(self.modalities),
             "completed": True,
         }
         return metadata

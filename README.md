@@ -8,7 +8,7 @@ VGArm 是一个基于 MuJoCo 的轻量级、可复现、语言条件多机械臂
 - 虚拟环境：`~/projects/vgarm/.venv`
 - Python：3.14.4
 - MuJoCo：3.10.0
-- VGArm：0.3.0
+- VGArm：0.4.0
 - MuJoCo Menagerie：项目内 `third_party/mujoco_menagerie/` 快照（该快照未携带独立 commit 元数据）
 
 激活环境并配置模型路径：
@@ -32,14 +32,14 @@ vgarm --help
 cd ~/projects/vgarm
 python3 -m venv .venv
 source .venv/bin/activate
-python -m pip install ./dist/vgarm-0.3.0-py3-none-any.whl
+python -m pip install ./dist/vgarm-0.4.0-py3-none-any.whl
 ```
 
 如果 `.venv` 已存在且 `vgarm --help` 正常，无需重复安装。
 
 ## 目录结构
 
-- `dist/`：可安装的 VGArm wheel 发布包，当前版本为 `0.3.0`。
+- `dist/`：可安装的 VGArm wheel 发布包，当前版本为 `0.4.0`。
 - `source/`：Python 源代码、测试和开发文档。
 - `examples/`：可直接运行的场景 JSON。
 - `docs/`：架构、场景格式和发布说明。
@@ -104,7 +104,12 @@ PYTHONPATH=./source python -m unittest discover \
 
 ## Trajectory Dataset
 
-v0.3.0 可以把真实 VGArm 控制循环保存为版本化的逐物理步状态—动作数据：
+v0.4.0 可以把真实 VGArm 控制循环保存为版本化的逐物理步状态—动作和
+MuJoCo 虚拟相机 RGB 数据。state-only 不需要视频依赖；RGB 需要：
+
+```bash
+python -m pip install ".[rgb]"
+```
 
 ```bash
 vgarm dataset generate \
@@ -122,18 +127,32 @@ vgarm dataset export-lerobot ./datasets/vgarm_fr3_state_v1 \
   --output ./datasets/vgarm_fr3_lerobot
 ```
 
+RGB 录制：
+
+```bash
+MUJOCO_GL=egl vgarm dataset generate \
+  --scene examples/basic_scene.json \
+  --tasks examples/trajectory_tasks.json \
+  --robots franka_fr3 --episodes 1 --seed 42 \
+  --position-jitter 0.03 --modalities state,rgb \
+  --cameras camera_front --rgb-width 640 --rgb-height 480 --rgb-fps 20 \
+  --no-viewer --output datasets/vgarm_fr3_rgb_v1
+```
+
 每行严格表示 `(o_t, a_t) → o_{t+1}`：`action.ctrl` 是下一次
 `mujoco.mj_step()` 真正使用的 `data.ctrl`，不是关节观测或 waypoint。
 最后 observation 与完整 `mjSTATE_INTEGRATION` 初末状态单独保存。一个原生
 dataset 只包含一种机器人；多机器人命令会生成各自独立 schema 的子数据集。
 
 `--resume` 只接受完全相同的配置 fingerprint，并跳过已经原子完成的 episode。
-RGB 在 0.3.0 中仍为保留增强项，CLI 会明确拒绝而不会生成伪视频。LeRobot
-是可选依赖；导出器按官方 v3 API 实现，并设计为在导出后使用官方 loader 重载检查，但尚未在当前 Python 3.14 环境中完成实际兼容性验证。
+RGB 与对应 `o_t/a_t` 在同一个 pre-step 采样；控制器仍使用模拟器真值，
+RGB 不参与控制。LeRobot 是可选依赖；导出器按官方 v3 API 实现，并设计为
+在导出后使用官方 loader 重载检查，但尚未在当前 Python 3.14 环境中完成
+实际兼容性验证。
 完整字段、重放容差、校验规则和已知限制见
 [Trajectory Dataset 文档](docs/trajectory_dataset.md)。
 
-v0.3.0 只提供轨迹生成、校验和重放基础设施，尚未包含世界模型、行为克隆或其他学习型机器人策略。
+v0.4.0 尚未包含视觉检测、视觉闭环、世界模型、行为克隆或其他学习型策略。
 
 ## Benchmark
 

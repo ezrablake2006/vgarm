@@ -23,6 +23,13 @@ REPLAY_TOLERANCE = 1.5e-4
 
 def _restore_layout(metadata, dataset_config=None):
     layout = reconstruct_scene(scene_json_path=metadata["scene_path"])
+    if (
+        dataset_config is not None
+        and dataset_config.get("schema_version") == "1.0"
+    ):
+        # Camera-only XML additions in schema 1.1 must not change the model
+        # fingerprint of an existing v0.3/state-only dataset.
+        layout = replace(layout, cameras=[])
     # The XML hash covers the deterministic pre-simulation scene layout.
     # Initial object positions in episode metadata are measured after robot
     # homing and can contain harmless solver-scale displacement (e.g. 1e-12 m);
@@ -195,6 +202,13 @@ def replay_trajectory(
             "replay_success": bool(metadata["success"] and matched),
             "matched": matched,
             "final_task_verification": metadata["verification"],
+            "has_rgb": "rgb" in metadata.get("recording_modalities", []),
+            "rgb_frame_count": (
+                next(iter(metadata.get("video_files", {}).values()))[
+                    "frame_count"
+                ]
+                if metadata.get("video_files") else 0
+            ),
         }
     finally:
         xml_path.unlink(missing_ok=True)

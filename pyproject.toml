@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "vgarm"
-version = "0.3.0"
+version = "0.4.0"
 description = "Reproducible MuJoCo manipulation benchmarks and trajectory datasets"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -17,6 +17,10 @@ dependencies = [
 [project.optional-dependencies]
 gui = ["pillow>=10.0"]
 lerobot = ["lerobot>=0.4.0"]
+rgb = [
+  "imageio>=2.34",
+  "imageio-ffmpeg>=0.5",
+]
 
 [project.scripts]
 vgarm = "vgarm.cli:main"

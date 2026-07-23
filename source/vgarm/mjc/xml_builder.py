@@ -49,6 +49,13 @@ def build_scene_xml(
     lines.append("  <option timestep=\"0.002\"/>")
     lines.append("  <worldbody>")
     lines.append("    <light pos=\"0 0 1.5\" dir=\"0 0 -1\" directional=\"true\"/>")
+    for camera in scene.cameras:
+        lines.append(
+            f'    <camera name="{camera.name}" '
+            f'pos="{_fmt_floats(camera.pos_xyz)}" '
+            f'xyaxes="{_fmt_floats(camera.xyaxes)}" '
+            f'fovy="{camera.fovy:.6g}"/>'
+        )
     if scene.floor_plane:
         lines.append(f'    <geom name="floor" size="0 0 0.05" type="plane" rgba="{_fmt_floats(scene.floor_rgba)}"/>')
 

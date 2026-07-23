@@ -1,6 +1,20 @@
 {
   "floor_plane": true,
   "floor_rgba": [0.2, 0.3, 0.4, 1.0],
+  "cameras": [
+    {
+      "name": "camera_front",
+      "pos_xyz": [0.55, -0.8, 0.8],
+      "xyaxes": [1.0, 0.0, 0.0, 0.0, 0.70710678, 0.70710678],
+      "fovy": 45.0
+    },
+    {
+      "name": "camera_top",
+      "pos_xyz": [0.55, 0.0, 1.4],
+      "xyaxes": [1.0, 0.0, 0.0, 0.0, 1.0, 0.0],
+      "fovy": 40.0
+    }
+  ],
   "objects": [
     {
       "name": "cube_red",
@@ -28,4 +42,3 @@
     }
   ]
 }
-

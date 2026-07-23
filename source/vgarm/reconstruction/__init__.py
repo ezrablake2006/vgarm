@@ -1,5 +1,5 @@
 from .from_image import reconstruct_scene
-from .types import SceneLayout, SimObject
+from .types import SceneLayout, SimCamera, SimObject
 
-__all__ = ["SceneLayout", "SimObject", "reconstruct_scene"]
+__all__ = ["SceneLayout", "SimCamera", "SimObject", "reconstruct_scene"]
 

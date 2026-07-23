@@ -1,0 +1,6 @@
+[
+  {
+    "id": "move_red_left",
+    "instruction": "把红色方块移到左边"
+  }
+]

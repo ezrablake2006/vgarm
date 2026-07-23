@@ -1,7 +1,13 @@
 from __future__ import annotations
 
 
-def build_schema(executor, object_names: tuple[str, ...]) -> dict:
+def build_schema(
+    executor,
+    object_names: tuple[str, ...],
+    *,
+    modalities: tuple[str, ...] = ("state",),
+    camera_schema: dict | None = None,
+) -> dict:
     joint_names = [
         executor.model.joint(joint.joint_id).name for joint in executor._actuated
     ]
@@ -9,8 +15,12 @@ def build_schema(executor, object_names: tuple[str, ...]) -> dict:
         executor.model.actuator(joint.actuator_id).name for joint in executor._actuated
     ]
     return {
-        "dataset_schema_version": "1.0",
-        "time_alignment": "(o_t, a_t) -> o_{t+1}; sampled immediately before mj_step",
+        "dataset_schema_version": "1.1",
+        "compatible_schema_versions": ["1.0", "1.1"],
+        "time_alignment": (
+            "(I_t, o_t, a_t) -> o_{t+1}; state/action and optional RGB "
+            "are sampled immediately before mj_step"
+        ),
         "physics_timestep": float(executor.model.opt.timestep),
         "joint_names": joint_names,
         "joint_qpos_addresses": [item.qpos_address for item in executor._actuated],
@@ -18,6 +28,16 @@ def build_schema(executor, object_names: tuple[str, ...]) -> dict:
         "actuator_names": actuator_names,
         "object_names": list(object_names),
         "attachment_site": executor.robot.attachment_site_name,
+        "modalities": list(modalities),
+        "camera_schema": camera_schema or {},
+        "visual_observation": {
+            "rgb_frame_index": (
+                "zero-based shared video frame index; null on unsampled rows"
+            ),
+            "rgb_timestamp": (
+                "MuJoCo time of the same pre-step physics row; null when unsampled"
+            ),
+        },
         "dimensions": {
             "joint": len(joint_names),
             "actuator": len(actuator_names),

@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from .types import SceneLayout, SimObject
+from .types import SceneLayout, SimCamera, SimObject
 from .schema import validate_scene_payload
 
 
@@ -24,6 +24,15 @@ def _parse_object(obj: dict[str, Any]) -> SimObject:
         size_xyz=size,  # type: ignore[arg-type]
         rgba=rgba,  # type: ignore[arg-type]
         friction=friction,  # type: ignore[arg-type]
+    )
+
+
+def _parse_camera(camera: dict[str, Any]) -> SimCamera:
+    return SimCamera(
+        name=str(camera["name"]),
+        pos_xyz=tuple(float(x) for x in camera["pos_xyz"]),  # type: ignore[arg-type]
+        xyaxes=tuple(float(x) for x in camera["xyaxes"]),  # type: ignore[arg-type]
+        fovy=float(camera.get("fovy", 45.0)),
     )
 
 
@@ -69,7 +78,13 @@ def reconstruct_scene(image_path: str | None = None, scene_json_path: str | None
     validate_scene_payload(payload)
 
     objects = [_parse_object(o) for o in payload.get("objects", [])]
+    cameras = [_parse_camera(item) for item in payload.get("cameras", [])]
     floor_plane = bool(payload.get("floor_plane", True))
     floor_rgba = tuple(float(x) for x in payload.get("floor_rgba", (0.2, 0.3, 0.4, 1.0)))
-    return SceneLayout(objects=objects, floor_plane=floor_plane, floor_rgba=floor_rgba)  # type: ignore[arg-type]
+    return SceneLayout(
+        objects=objects,
+        cameras=cameras,
+        floor_plane=floor_plane,
+        floor_rgba=floor_rgba,
+    )  # type: ignore[arg-type]
 

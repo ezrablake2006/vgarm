@@ -1,3 +1,16 @@
+VGArm 0.4.0
+
+- 新增 Trajectory Dataset schema 1.1 与严格 pre-step RGB：
+  `(I_t, o_t, a_t) -> o_(t+1)`。
+- 新增通用命名 MuJoCo camera scene schema、camera_front/camera_top 示例。
+- 新增有理数 RGB 调度器，支持物理频率不能整除的 17/20/30 Hz 且无累计漂移。
+- 使用 imageio + imageio-ffmpeg 流式编码 H.264/yuv420p MP4；依赖位于
+  `vgarm[rgb]` optional extra。
+- 视频完整纳入 `.incomplete`、flush/解码复检、SHA-256、原子提交和 resume。
+- validator 新增视频、帧映射、timestamp、分辨率、相机集合、孤立文件检查。
+- stats/inspect/replay 展示 RGB 帧数、存储和有效帧率。
+- schema 1.0 的 v0.3.0 state-only 数据仍可读取、校验、统计和低层重放。
+
 VGArm 0.3.0
 
 - 新增 VGArm Trajectory Dataset v1：逐 MuJoCo 物理步记录 observation、

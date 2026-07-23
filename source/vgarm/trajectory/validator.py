@@ -8,6 +8,7 @@ import numpy as np
 
 from .reader import read_episode_rows, read_episodes
 from .util import sha256_file
+from .cameras import RgbDependencyError, probe_video
 
 
 def _finite(value) -> bool:
@@ -33,8 +34,15 @@ def validate_dataset(root: Path) -> dict:
         }
     dataset = json.loads(dataset_file.read_text(encoding="utf-8"))
     schema = json.loads(schema_file.read_text(encoding="utf-8"))
-    if dataset.get("schema_version") != "1.0" or schema.get("dataset_schema_version") != "1.0":
+    supported = {"1.0", "1.1"}
+    if (
+        dataset.get("schema_version") not in supported
+        or schema.get("dataset_schema_version") not in supported
+    ):
         errors.append("unsupported schema version")
+    dataset_modalities = dataset.get("modalities", ["state"])
+    dataset_cameras = dataset.get("cameras", [])
+    declared_video_paths = set()
     episodes = read_episodes(root)
     ids = [item["episode_id"] for item in episodes]
     if len(ids) != len(set(ids)):
@@ -58,6 +66,48 @@ def validate_dataset(root: Path) -> dict:
         if episode_errors:
             invalid.append(episode["episode_id"])
             errors.extend(f"episode {episode['episode_id']}: {item}" for item in episode_errors)
+            continue
+        episode_modalities = episode.get("recording_modalities", ["state"])
+        videos = episode.get("video_files", {})
+        if "rgb" in episode_modalities:
+            if set(videos) != set(dataset_cameras):
+                episode_errors.append(
+                    "RGB camera set differs from dataset configuration"
+                )
+            frame_counts = set()
+            for camera, video in videos.items():
+                path = root / video.get("path", "")
+                declared_video_paths.add(path.resolve())
+                prefix = f"camera {camera}"
+                if not path.is_file():
+                    episode_errors.append(f"{prefix}: video file missing")
+                    continue
+                if sha256_file(path) != video.get("sha256"):
+                    episode_errors.append(f"{prefix}: video checksum mismatch")
+                    continue
+                if path.stat().st_size != video.get("bytes"):
+                    episode_errors.append(f"{prefix}: video byte size mismatch")
+                try:
+                    probe = probe_video(path)
+                except (OSError, RuntimeError, ValueError, RgbDependencyError) as error:
+                    episode_errors.append(f"{prefix}: video decode failed: {error}")
+                    continue
+                for field in ("frame_count", "width", "height"):
+                    if probe[field] != video.get(field):
+                        episode_errors.append(
+                            f"{prefix}: decoded {field} differs from metadata"
+                        )
+                frame_counts.add(probe["frame_count"])
+            if len(frame_counts) > 1:
+                episode_errors.append("RGB cameras have different frame counts")
+        elif videos:
+            episode_errors.append("state-only episode unexpectedly declares videos")
+        if episode_errors:
+            invalid.append(episode["episode_id"])
+            errors.extend(
+                f"episode {episode['episode_id']}: {item}"
+                for item in episode_errors
+            )
             continue
         rows = read_episode_rows(root, episode)
         total_steps += len(rows)
@@ -87,6 +137,42 @@ def validate_dataset(root: Path) -> dict:
                 ):
                     episode_errors.append("timestamp is not strictly timestep-aligned")
                     break
+        if "rgb" in episode_modalities:
+            mappings = [
+                (index, row.get("visual_observation"))
+                for index, row in enumerate(rows)
+                if row.get("visual_observation") is not None
+            ]
+            mapped_indices = [
+                int(mapping["rgb_frame_index"]) for _, mapping in mappings
+            ]
+            expected_count = (
+                next(iter(videos.values()))["frame_count"] if videos else 0
+            )
+            if mapped_indices != list(range(expected_count)):
+                episode_errors.append(
+                    "RGB frame mapping is not unique and continuous from zero"
+                )
+            previous_timestamp = None
+            for row_index, mapping in mappings:
+                timestamp = float(mapping["rgb_timestamp"])
+                if previous_timestamp is not None and timestamp <= previous_timestamp:
+                    episode_errors.append("RGB timestamps are not strictly increasing")
+                    break
+                if not math.isclose(
+                    timestamp,
+                    float(rows[row_index]["timestamp"]),
+                    rel_tol=0,
+                    abs_tol=1e-12,
+                ):
+                    episode_errors.append(
+                        "RGB timestamp differs from mapped physics row"
+                    )
+                    break
+                previous_timestamp = timestamp
+        elif schema.get("dataset_schema_version") == "1.1":
+            if any(row.get("visual_observation") is not None for row in rows):
+                episode_errors.append("state-only trajectory contains RGB mappings")
         if rows:
             if not rows[-1]["terminated"] or rows[-1]["truncated"]:
                 episode_errors.append("last row termination flags are invalid")
@@ -118,6 +204,18 @@ def validate_dataset(root: Path) -> dict:
     incomplete = list((root / ".incomplete").glob("episode_*"))
     if incomplete:
         warnings.append(f"{len(incomplete)} incomplete episode(s) excluded")
+    actual_videos = {
+        path.resolve() for path in (root / "videos").rglob("*.mp4")
+        if path.is_file()
+    }
+    orphaned = actual_videos - declared_video_paths
+    if orphaned:
+        errors.append(
+            "undeclared video file(s): "
+            + ", ".join(str(path.relative_to(root.resolve())) for path in sorted(orphaned))
+        )
+    if "rgb" in dataset_modalities and not dataset_cameras:
+        errors.append("RGB dataset does not declare cameras")
     return {
         "passed": not errors,
         "episodes": len(episodes),

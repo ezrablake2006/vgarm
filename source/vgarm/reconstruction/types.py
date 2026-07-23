@@ -8,6 +8,14 @@ GeomType = Literal["box", "sphere", "cylinder"]
 
 
 @dataclass(frozen=True)
+class SimCamera:
+    name: str
+    pos_xyz: tuple[float, float, float]
+    xyaxes: tuple[float, float, float, float, float, float]
+    fovy: float = 45.0
+
+
+@dataclass(frozen=True)
 class SimObject:
     name: str
     category: str
@@ -21,6 +29,7 @@ class SimObject:
 @dataclass(frozen=True)
 class SceneLayout:
     objects: list[SimObject] = field(default_factory=list)
+    cameras: list[SimCamera] = field(default_factory=list)
     floor_plane: bool = True
     floor_rgba: tuple[float, float, float, float] = (0.2, 0.3, 0.4, 1.0)
 

@@ -27,4 +27,20 @@ def validate_scene_payload(payload: dict[str, Any]) -> None:
             raise TypeError("size_xyz must be length-3 array")
     if "floor_plane" in payload and not isinstance(payload["floor_plane"], bool):
         raise TypeError("floor_plane must be bool")
-
+    cameras = payload.get("cameras", [])
+    if not isinstance(cameras, list):
+        raise TypeError("cameras must be array")
+    names = set()
+    for camera in cameras:
+        if not isinstance(camera, dict):
+            raise TypeError("camera must be object")
+        for key, length in (("pos_xyz", 3), ("xyaxes", 6)):
+            value = camera.get(key)
+            if not isinstance(value, (list, tuple)) or len(value) != length:
+                raise TypeError(f"camera {key} must be length-{length} array")
+        name = camera.get("name")
+        if not isinstance(name, str) or not name:
+            raise TypeError("camera name must be non-empty string")
+        if name in names:
+            raise ValueError(f"duplicate camera name: {name}")
+        names.add(name)

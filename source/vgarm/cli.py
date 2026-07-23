@@ -264,6 +264,11 @@ def _dataset_main(argv: list[str]) -> int:
         from vgarm.trajectory.dataset import generate_dataset
         from vgarm.trajectory.models import DatasetConfig
         from vgarm.trajectory.util import atomic_json
+        from vgarm.trajectory.cameras import (
+            DatasetConfigurationError,
+            require_rgb_dependencies,
+            validate_rgb_configuration,
+        )
 
         parser = argparse.ArgumentParser(prog="vgarm dataset generate")
         parser.add_argument("--scene", type=Path, required=True)
@@ -273,6 +278,10 @@ def _dataset_main(argv: list[str]) -> int:
         parser.add_argument("--seed", type=int, default=42)
         parser.add_argument("--position-jitter", type=float, default=0.0)
         parser.add_argument("--modalities", default="state")
+        parser.add_argument("--cameras", default="")
+        parser.add_argument("--rgb-width", type=int, default=640)
+        parser.add_argument("--rgb-height", type=int, default=480)
+        parser.add_argument("--rgb-fps", type=float, default=20.0)
         viewer = parser.add_mutually_exclusive_group()
         viewer.add_argument("--viewer", dest="no_viewer", action="store_false")
         viewer.add_argument("--no-viewer", dest="no_viewer", action="store_true")
@@ -292,12 +301,21 @@ def _dataset_main(argv: list[str]) -> int:
         modalities = tuple(
             item.strip() for item in args.modalities.split(",") if item.strip()
         )
-        unsupported = set(modalities) - {"state"}
-        if unsupported:
-            parser.error(
-                "this build currently supports state recording only; unsupported: "
-                + ", ".join(sorted(unsupported))
+        cameras = tuple(
+            item.strip() for item in args.cameras.split(",") if item.strip()
+        )
+        try:
+            validate_rgb_configuration(
+                modalities,
+                cameras,
+                args.rgb_width,
+                args.rgb_height,
+                args.rgb_fps,
             )
+            if "rgb" in modalities:
+                require_rgb_dependencies()
+        except DatasetConfigurationError as error:
+            parser.error(str(error))
         robots = tuple(
             item.strip() for item in args.robots.split(",") if item.strip()
         )
@@ -318,6 +336,10 @@ def _dataset_main(argv: list[str]) -> int:
                 seed=args.seed,
                 position_jitter=args.position_jitter,
                 modalities=modalities,
+                cameras=cameras,
+                rgb_width=args.rgb_width,
+                rgb_height=args.rgb_height,
+                rgb_fps=args.rgb_fps,
                 no_viewer=args.no_viewer,
                 overwrite=args.overwrite,
                 resume=args.resume,
@@ -327,7 +349,15 @@ def _dataset_main(argv: list[str]) -> int:
             )
             try:
                 results[robot] = generate_dataset(config)
-            except (FileExistsError, ValueError) as error:
+            except KeyboardInterrupt:
+                print(
+                    "Dataset generation interrupted by user.\n"
+                    "Completed episodes were preserved.\n"
+                    "Resume with --resume.",
+                    file=sys.stderr,
+                )
+                return 130
+            except (FileExistsError, DatasetConfigurationError) as error:
                 parser.error(str(error))
         if len(robots) > 1:
             atomic_json(root / "manifest.json", {

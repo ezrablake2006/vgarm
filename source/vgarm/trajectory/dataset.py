@@ -5,12 +5,22 @@ import json
 import os
 from pathlib import Path
 import shutil
+import tempfile
+
+import mujoco
 
 from vgarm import __version__
 from vgarm.benchmark.models import BenchmarkConfig
 from vgarm.benchmark.runner import BenchmarkRunner, load_tasks
-from vgarm.mjc import available_robots
+from vgarm.mjc import available_robots, build_scene_xml
+from vgarm.reconstruction import reconstruct_scene
 
+from .cameras import (
+    DatasetConfigurationError,
+    require_rgb_dependencies,
+    validate_camera_names,
+    validate_rgb_configuration,
+)
 from .models import DatasetConfig, FORMAT_NAME, SCHEMA_VERSION
 from .recorder import TrajectoryRecorder
 from .stats import compute_stats
@@ -28,6 +38,10 @@ def config_payload(config: DatasetConfig, tasks) -> dict:
         "seed": config.seed,
         "position_jitter": config.position_jitter,
         "modalities": list(config.modalities),
+        "cameras": list(config.cameras),
+        "rgb_width": config.rgb_width if "rgb" in config.modalities else None,
+        "rgb_height": config.rgb_height if "rgb" in config.modalities else None,
+        "rgb_fps": config.rgb_fps if "rgb" in config.modalities else None,
         "vgarm_version": __version__,
     }
 
@@ -44,10 +58,14 @@ def prepare_dataset(config: DatasetConfig, tasks) -> tuple[dict, set[int]]:
             raise FileExistsError(f"dataset directory is not empty: {root}")
     if config.resume:
         if not dataset_file.is_file():
-            raise ValueError("cannot resume: meta/dataset.json is missing")
+            raise DatasetConfigurationError(
+                "cannot resume: meta/dataset.json is missing"
+            )
         existing = json.loads(dataset_file.read_text(encoding="utf-8"))
         if existing.get("config_fingerprint") != fingerprint:
-            raise ValueError("cannot resume: dataset configuration fingerprint differs")
+            raise DatasetConfigurationError(
+                "cannot resume: dataset configuration fingerprint differs"
+            )
     for directory in ("meta", "data", "states", "videos", "logs", ".incomplete"):
         (root / directory).mkdir(parents=True, exist_ok=True)
     if not dataset_file.exists():
@@ -66,29 +84,76 @@ def prepare_dataset(config: DatasetConfig, tasks) -> tuple[dict, set[int]]:
     return payload, completed
 
 
+def preflight_dataset(config: DatasetConfig) -> None:
+    """Validate RGB configuration before creating output or running physics."""
+    validate_rgb_configuration(
+        config.modalities,
+        config.cameras,
+        config.rgb_width,
+        config.rgb_height,
+        config.rgb_fps,
+    )
+    if "rgb" not in config.modalities:
+        return
+    require_rgb_dependencies()
+    layout = reconstruct_scene(scene_json_path=str(config.scene))
+    robot = available_robots()[config.robot]
+    robot_directory = robot.include_xml_path.resolve().parent
+    built = build_scene_xml(layout, robot, xml_base_dir=robot_directory)
+    # Nested Menagerie mesh paths are relative to the robot XML directory.
+    # The preflight XML lives there briefly, is never part of dataset output,
+    # and is removed on every success/failure path.
+    with tempfile.NamedTemporaryFile(
+        mode="w",
+        suffix=".xml",
+        prefix="_vgarm_camera_preflight_",
+        dir=robot_directory,
+        encoding="utf-8",
+        delete=False,
+    ) as stream:
+        stream.write(built.xml_text)
+        xml_path = Path(stream.name)
+    try:
+        model = mujoco.MjModel.from_xml_path(str(xml_path))
+        validate_camera_names(model, config.cameras)
+    finally:
+        xml_path.unlink(missing_ok=True)
+
+
 def generate_dataset(config: DatasetConfig, *, viewer_factory=None) -> dict:
+    preflight_dataset(config)
     tasks = load_tasks(config.tasks_file)
     _, completed = prepare_dataset(config, tasks)
     robot_spec = available_robots()[config.robot]
     recorders = {}
+    recorder_errors = {}
 
     def recorder_factory(robot, task, seed, executor, layout, initial, xml_text):
         episode_id = seed - config.seed
         incomplete = config.root / ".incomplete" / f"episode_{episode_id:06d}"
         if incomplete.exists():
             shutil.rmtree(incomplete)
-        recorder = TrajectoryRecorder(
-            config.root,
-            episode_id,
-            seed,
-            task,
-            executor,
-            config.scene,
-            initial_object_positions={
-                name: [xy[0], xy[1]] for name, xy in initial.items()
-            },
-            viewer_enabled=not config.no_viewer,
-        )
+        try:
+            recorder = TrajectoryRecorder(
+                config.root,
+                episode_id,
+                seed,
+                task,
+                executor,
+                config.scene,
+                initial_object_positions={
+                    name: [xy[0], xy[1]] for name, xy in initial.items()
+                },
+                viewer_enabled=not config.no_viewer,
+                modalities=config.modalities,
+                cameras=config.cameras,
+                rgb_width=config.rgb_width,
+                rgb_height=config.rgb_height,
+                rgb_fps=config.rgb_fps,
+            )
+        except Exception as error:
+            recorder_errors[episode_id] = error
+            raise
         recorder.model_xml_hash = stable_hash(xml_text)
         recorder.asset_manifest_hash = sha256_file(robot_spec.include_xml_path)
         recorders[episode_id] = recorder
@@ -120,7 +185,14 @@ def generate_dataset(config: DatasetConfig, *, viewer_factory=None) -> dict:
         seed = config.seed + episode_id
         try:
             result = runner._run_one(episode_id, config.robot, task, seed)
-            recorder = recorders[episode_id]
+            recorder = recorders.get(episode_id)
+            if recorder is None:
+                initialization_error = recorder_errors.get(episode_id)
+                if initialization_error is not None:
+                    raise initialization_error
+                raise RuntimeError(
+                    f"trajectory recorder was not initialized for episode {episode_id}"
+                )
             metadata = recorder.commit(
                 result,
                 model_xml_hash=recorder.model_xml_hash,

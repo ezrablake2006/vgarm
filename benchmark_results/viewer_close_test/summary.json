@@ -1,0 +1,90 @@
+{
+  "overall": {
+    "episodes": 1,
+    "successful_episodes": 0,
+    "overall_success_rate": 0.0,
+    "parse_success_rate": 1.0,
+    "pick_success_rate": null,
+    "pick_denominator": 0,
+    "place_success_rate": null,
+    "place_denominator": 0,
+    "collision_rate": 0.0,
+    "timeout_rate": 0.0,
+    "average_duration_seconds": 3.9003071970000747,
+    "median_duration_seconds": 3.9003071970000747,
+    "failures": {
+      "viewer_closed": {
+        "count": 1,
+        "rate": 1.0
+      }
+    }
+  },
+  "by_robot": {
+    "kinova_gen3": {
+      "episodes": 1,
+      "successful_episodes": 0,
+      "overall_success_rate": 0.0,
+      "parse_success_rate": 1.0,
+      "pick_success_rate": null,
+      "pick_denominator": 0,
+      "place_success_rate": null,
+      "place_denominator": 0,
+      "collision_rate": 0.0,
+      "timeout_rate": 0.0,
+      "average_duration_seconds": 3.9003071970000747,
+      "median_duration_seconds": 3.9003071970000747,
+      "failures": {
+        "viewer_closed": {
+          "count": 1,
+          "rate": 1.0
+        }
+      }
+    }
+  },
+  "by_task": {
+    "place_blue_right_of_red": {
+      "episodes": 1,
+      "successful_episodes": 0,
+      "overall_success_rate": 0.0,
+      "parse_success_rate": 1.0,
+      "pick_success_rate": null,
+      "pick_denominator": 0,
+      "place_success_rate": null,
+      "place_denominator": 0,
+      "collision_rate": 0.0,
+      "timeout_rate": 0.0,
+      "average_duration_seconds": 3.9003071970000747,
+      "median_duration_seconds": 3.9003071970000747,
+      "failures": {
+        "viewer_closed": {
+          "count": 1,
+          "rate": 1.0
+        }
+      }
+    }
+  },
+  "by_robot_task": {
+    "kinova_gen3": {
+      "place_blue_right_of_red": {
+        "episodes": 1,
+        "successful_episodes": 0,
+        "overall_success_rate": 0.0,
+        "parse_success_rate": 1.0,
+        "pick_success_rate": null,
+        "pick_denominator": 0,
+        "place_success_rate": null,
+        "place_denominator": 0,
+        "collision_rate": 0.0,
+        "timeout_rate": 0.0,
+        "average_duration_seconds": 3.9003071970000747,
+        "median_duration_seconds": 3.9003071970000747,
+        "failures": {
+          "viewer_closed": {
+            "count": 1,
+            "rate": 1.0
+          }
+        }
+      }
+    }
+  }
+}

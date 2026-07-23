@@ -1,0 +1,21 @@
+{
+  "scene": "/home/ezrayang/projects/vgarm/examples/basic_scene.json",
+  "robots": [
+    "franka_fr3"
+  ],
+  "episodes": 1,
+  "seed": 49,
+  "output": "/home/ezrayang/projects/vgarm/benchmark_results/visual_seed49_fr3",
+  "tasks": [
+    {
+      "id": "move_red_left",
+      "instruction": "把红色方块移到左边"
+    }
+  ],
+  "position_jitter": 0.03,
+  "no_viewer": false,
+  "quiet": false,
+  "verbose": true,
+  "fail_fast": false,
+  "overwrite": true
+}

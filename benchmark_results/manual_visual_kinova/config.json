@@ -1,0 +1,22 @@
+{
+  "scene": "/home/ezrayang/projects/vgarm/examples/basic_scene.json",
+  "robots": [
+    "kinova_gen3"
+  ],
+  "episodes": 1,
+  "seed": 42,
+  "output": "/home/ezrayang/projects/vgarm/benchmark_results/manual_visual_kinova",
+  "tasks": [
+    {
+      "id": "place_blue_right_of_red",
+      "instruction": "把蓝色方块放在红色方块右边"
+    }
+  ],
+  "position_jitter": 0.03,
+  "no_viewer": false,
+  "viewer_speed": 1.0,
+  "quiet": false,
+  "verbose": true,
+  "fail_fast": false,
+  "overwrite": true
+}

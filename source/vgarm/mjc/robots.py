@@ -11,6 +11,9 @@ class RobotSpec:
     include_xml_path: Path
     attachment_site_name: str
     default_home_qpos: tuple[float, ...] | None = None
+    grasp_orientation: tuple[float, ...] | None = None
+    orientation_alignment_steps: int = 0
+    transit_max_steps: int | None = None
 
 
 def _menagerie_root() -> Path:
@@ -44,5 +47,10 @@ def available_robots() -> dict[str, RobotSpec]:
             robot_id="kinova_gen3",
             include_xml_path=menagerie / "kinova_gen3" / "gen3.xml",
             attachment_site_name="pinch_site",
+            # Menagerie's home pose points the pinch axis horizontally.  Rotate
+            # the tool to a top-down pose before Cartesian task execution.
+            grasp_orientation=(0.0, 1.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, -1.0),
+            orientation_alignment_steps=3000,
+            transit_max_steps=1400,
         ),
     }

@@ -1,0 +1,44 @@
+{
+  "overall": {
+    "episodes": 20,
+    "successful_episodes": 18,
+    "overall_success_rate": 0.9,
+    "parse_success_rate": 1.0,
+    "pick_success_rate": 1.0,
+    "pick_denominator": 20,
+    "place_success_rate": 0.9,
+    "place_denominator": 20,
+    "collision_rate": 0.1,
+    "timeout_rate": 0.0,
+    "average_duration_seconds": 15.116872291050004,
+    "median_duration_seconds": 10.983399094999982,
+    "failures": {
+      "collision": {
+        "count": 2,
+        "rate": 0.1
+      }
+    }
+  },
+  "by_robot": {
+    "franka_fr3": {
+      "episodes": 20,
+      "successful_episodes": 18,
+      "overall_success_rate": 0.9,
+      "parse_success_rate": 1.0,
+      "pick_success_rate": 1.0,
+      "pick_denominator": 20,
+      "place_success_rate": 0.9,
+      "place_denominator": 20,
+      "collision_rate": 0.1,
+      "timeout_rate": 0.0,
+      "average_duration_seconds": 15.116872291050004,
+      "median_duration_seconds": 10.983399094999982,
+      "failures": {
+        "collision": {
+          "count": 2,
+          "rate": 0.1
+        }
+      }
+    }
+  }
+}

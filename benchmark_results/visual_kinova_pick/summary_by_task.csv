@@ -1,0 +1,2 @@
+task_id,episodes,parse_success_rate,pick_success_rate,place_success_rate,overall_success_rate,collision_rate,timeout_rate,average_duration_seconds,median_duration_seconds
+place_blue_right_of_red,1,1.0,1.0,1.0,1.0,0.0,0.0,14.240575884999998,14.240575884999998

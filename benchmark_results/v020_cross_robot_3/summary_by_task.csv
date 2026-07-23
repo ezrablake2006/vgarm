@@ -1,0 +1,6 @@
+task_id,episodes,parse_success_rate,pick_success_rate,place_success_rate,overall_success_rate,collision_rate,timeout_rate,average_duration_seconds,median_duration_seconds
+move_blue_right,4,1.0,1.0,1.0,1.0,0.0,0.0,11.147364703249877,11.238553614999773
+move_red_left,1,1.0,1.0,1.0,1.0,0.0,0.0,14.160471892000714,14.160471892000714
+place_blue_right_of_red,2,1.0,1.0,1.0,1.0,0.0,0.0,10.732930210999939,10.732930210999939
+place_red_left_of_blue,2,1.0,1.0,1.0,1.0,0.0,0.0,11.951398642000186,11.951398642000186
+swap_red_blue,3,1.0,0.6666666666666666,1.0,0.6666666666666666,0.0,0.3333333333333333,22.85503526466664,27.721627274000184

@@ -1,0 +1,5 @@
+robot,episodes,parse_success_rate,pick_success_rate,place_success_rate,overall_success_rate,collision_rate,timeout_rate,average_duration_seconds
+franka_fr3,3,1.0,1.0,1.0,1.0,0.0,0.0,10.796130573000028
+franka_panda,3,1.0,1.0,1.0,1.0,0.0,0.0,15.908412166666645
+kinova_gen3,3,1.0,0.6666666666666666,1.0,0.6666666666666666,0.0,0.3333333333333333,9.803480942333408
+ur5e,3,1.0,1.0,1.0,1.0,0.0,0.0,21.053207719666716

@@ -1,0 +1,17 @@
+{
+  "move_red_left": {
+    "episodes": 1,
+    "successful_episodes": 1,
+    "overall_success_rate": 1.0,
+    "parse_success_rate": 1.0,
+    "pick_success_rate": 1.0,
+    "pick_denominator": 1,
+    "place_success_rate": 1.0,
+    "place_denominator": 1,
+    "collision_rate": 0.0,
+    "timeout_rate": 0.0,
+    "average_duration_seconds": 10.855690569000217,
+    "median_duration_seconds": 10.855690569000217,
+    "failures": {}
+  }
+}

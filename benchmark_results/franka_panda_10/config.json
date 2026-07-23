@@ -1,0 +1,37 @@
+{
+  "scene": "/home/ezrayang/projects/vgarm/examples/basic_scene.json",
+  "robots": [
+    "franka_panda"
+  ],
+  "episodes": 10,
+  "seed": 42,
+  "output": "/home/ezrayang/projects/vgarm/benchmark_results/franka_panda_10",
+  "tasks": [
+    {
+      "id": "move_red_left",
+      "instruction": "把红色方块移到左边"
+    },
+    {
+      "id": "move_blue_right",
+      "instruction": "把蓝色方块移到右边"
+    },
+    {
+      "id": "place_red_left_of_blue",
+      "instruction": "把红色方块放在蓝色方块左边"
+    },
+    {
+      "id": "place_blue_right_of_red",
+      "instruction": "把蓝色方块放在红色方块右边"
+    },
+    {
+      "id": "swap_red_blue",
+      "instruction": "交换红色方块和蓝色方块位置"
+    }
+  ],
+  "position_jitter": 0.03,
+  "no_viewer": true,
+  "quiet": false,
+  "verbose": false,
+  "fail_fast": false,
+  "overwrite": false
+}

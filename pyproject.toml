@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "vgarm"
+version = "0.2.0"
+description = "Vision-guided robot arm interaction with reproducible MuJoCo benchmarks"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "numpy>=1.23",
+  "mujoco>=3.0",
+]
+
+[project.optional-dependencies]
+gui = ["pillow>=10.0"]
+
+[project.scripts]
+vgarm = "vgarm.cli:main"
+vgarm-image = "vgarm_app.image_app:main"
+
+[tool.setuptools]
+package-dir = {"" = "source"}
+
+[tool.setuptools.packages.find]
+where = ["source"]
+include = ["vgarm*", "vgarm_app*"]

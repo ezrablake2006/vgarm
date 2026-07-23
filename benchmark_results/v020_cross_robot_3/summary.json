@@ -1,0 +1,366 @@
+{
+  "overall": {
+    "episodes": 12,
+    "successful_episodes": 11,
+    "overall_success_rate": 0.9166666666666666,
+    "parse_success_rate": 1.0,
+    "pick_success_rate": 0.9166666666666666,
+    "pick_denominator": 12,
+    "place_success_rate": 1.0,
+    "place_denominator": 11,
+    "collision_rate": 0.0,
+    "timeout_rate": 0.08333333333333333,
+    "average_duration_seconds": 14.390307850416699,
+    "median_duration_seconds": 11.486395140999775,
+    "failures": {
+      "timeout": {
+        "count": 1,
+        "rate": 0.08333333333333333
+      }
+    }
+  },
+  "by_robot": {
+    "franka_fr3": {
+      "episodes": 3,
+      "successful_episodes": 3,
+      "overall_success_rate": 1.0,
+      "parse_success_rate": 1.0,
+      "pick_success_rate": 1.0,
+      "pick_denominator": 3,
+      "place_success_rate": 1.0,
+      "place_denominator": 3,
+      "collision_rate": 0.0,
+      "timeout_rate": 0.0,
+      "average_duration_seconds": 10.796130573000028,
+      "median_duration_seconds": 10.70132142500006,
+      "failures": {}
+    },
+    "franka_panda": {
+      "episodes": 3,
+      "successful_episodes": 3,
+      "overall_success_rate": 1.0,
+      "parse_success_rate": 1.0,
+      "pick_success_rate": 1.0,
+      "pick_denominator": 3,
+      "place_success_rate": 1.0,
+      "place_denominator": 3,
+      "collision_rate": 0.0,
+      "timeout_rate": 0.0,
+      "average_duration_seconds": 15.908412166666645,
+      "median_duration_seconds": 10.374483748999864,
+      "failures": {}
+    },
+    "kinova_gen3": {
+      "episodes": 3,
+      "successful_episodes": 2,
+      "overall_success_rate": 0.6666666666666666,
+      "parse_success_rate": 1.0,
+      "pick_success_rate": 0.6666666666666666,
+      "pick_denominator": 3,
+      "place_success_rate": 1.0,
+      "place_denominator": 2,
+      "collision_rate": 0.0,
+      "timeout_rate": 0.3333333333333333,
+      "average_duration_seconds": 9.803480942333408,
+      "median_duration_seconds": 12.483226106000075,
+      "failures": {
+        "timeout": {
+          "count": 1,
+          "rate": 0.3333333333333333
+        }
+      }
+    },
+    "ur5e": {
+      "episodes": 3,
+      "successful_episodes": 3,
+      "overall_success_rate": 1.0,
+      "parse_success_rate": 1.0,
+      "pick_success_rate": 1.0,
+      "pick_denominator": 3,
+      "place_success_rate": 1.0,
+      "place_denominator": 3,
+      "collision_rate": 0.0,
+      "timeout_rate": 0.0,
+      "average_duration_seconds": 21.053207719666716,
+      "median_duration_seconds": 13.201475859000311,
+      "failures": {}
+    }
+  },
+  "by_task": {
+    "move_blue_right": {
+      "episodes": 4,
+      "successful_episodes": 4,
+      "overall_success_rate": 1.0,
+      "parse_success_rate": 1.0,
+      "pick_success_rate": 1.0,
+      "pick_denominator": 4,
+      "place_success_rate": 1.0,
+      "place_denominator": 4,
+      "collision_rate": 0.0,
+      "timeout_rate": 0.0,
+      "average_duration_seconds": 11.147364703249877,
+      "median_duration_seconds": 11.238553614999773,
+      "failures": {}
+    },
+    "move_red_left": {
+      "episodes": 1,
+      "successful_episodes": 1,
+      "overall_success_rate": 1.0,
+      "parse_success_rate": 1.0,
+      "pick_success_rate": 1.0,
+      "pick_denominator": 1,
+      "place_success_rate": 1.0,
+      "place_denominator": 1,
+      "collision_rate": 0.0,
+      "timeout_rate": 0.0,
+      "average_duration_seconds": 14.160471892000714,
+      "median_duration_seconds": 14.160471892000714,
+      "failures": {}
+    },
+    "place_blue_right_of_red": {
+      "episodes": 2,
+      "successful_episodes": 2,
+      "overall_success_rate": 1.0,
+      "parse_success_rate": 1.0,
+      "pick_success_rate": 1.0,
+      "pick_denominator": 2,
+      "place_success_rate": 1.0,
+      "place_denominator": 2,
+      "collision_rate": 0.0,
+      "timeout_rate": 0.0,
+      "average_duration_seconds": 10.732930210999939,
+      "median_duration_seconds": 10.732930210999939,
+      "failures": {}
+    },
+    "place_red_left_of_blue": {
+      "episodes": 2,
+      "successful_episodes": 2,
+      "overall_success_rate": 1.0,
+      "parse_success_rate": 1.0,
+      "pick_success_rate": 1.0,
+      "pick_denominator": 2,
+      "place_success_rate": 1.0,
+      "place_denominator": 2,
+      "collision_rate": 0.0,
+      "timeout_rate": 0.0,
+      "average_duration_seconds": 11.951398642000186,
+      "median_duration_seconds": 11.951398642000186,
+      "failures": {}
+    },
+    "swap_red_blue": {
+      "episodes": 3,
+      "successful_episodes": 2,
+      "overall_success_rate": 0.6666666666666666,
+      "parse_success_rate": 1.0,
+      "pick_success_rate": 0.6666666666666666,
+      "pick_denominator": 3,
+      "place_success_rate": 1.0,
+      "place_denominator": 2,
+      "collision_rate": 0.0,
+      "timeout_rate": 0.3333333333333333,
+      "average_duration_seconds": 22.85503526466664,
+      "median_duration_seconds": 27.721627274000184,
+      "failures": {
+        "timeout": {
+          "count": 1,
+          "rate": 0.3333333333333333
+        }
+      }
+    }
+  },
+  "by_robot_task": {
+    "franka_fr3": {
+      "move_blue_right": {
+        "episodes": 1,
+        "successful_episodes": 1,
+        "overall_success_rate": 1.0,
+        "parse_success_rate": 1.0,
+        "pick_success_rate": 1.0,
+        "pick_denominator": 1,
+        "place_success_rate": 1.0,
+        "place_denominator": 1,
+        "collision_rate": 0.0,
+        "timeout_rate": 0.0,
+        "average_duration_seconds": 10.59569362100001,
+        "median_duration_seconds": 10.59569362100001,
+        "failures": {}
+      },
+      "place_blue_right_of_red": {
+        "episodes": 1,
+        "successful_episodes": 1,
+        "overall_success_rate": 1.0,
+        "parse_success_rate": 1.0,
+        "pick_success_rate": 1.0,
+        "pick_denominator": 1,
+        "place_success_rate": 1.0,
+        "place_denominator": 1,
+        "collision_rate": 0.0,
+        "timeout_rate": 0.0,
+        "average_duration_seconds": 11.091376673000013,
+        "median_duration_seconds": 11.091376673000013,
+        "failures": {}
+      },
+      "place_red_left_of_blue": {
+        "episodes": 1,
+        "successful_episodes": 1,
+        "overall_success_rate": 1.0,
+        "parse_success_rate": 1.0,
+        "pick_success_rate": 1.0,
+        "pick_denominator": 1,
+        "place_success_rate": 1.0,
+        "place_denominator": 1,
+        "collision_rate": 0.0,
+        "timeout_rate": 0.0,
+        "average_duration_seconds": 10.70132142500006,
+        "median_duration_seconds": 10.70132142500006,
+        "failures": {}
+      }
+    },
+    "franka_panda": {
+      "move_blue_right": {
+        "episodes": 1,
+        "successful_episodes": 1,
+        "overall_success_rate": 1.0,
+        "parse_success_rate": 1.0,
+        "pick_success_rate": 1.0,
+        "pick_denominator": 1,
+        "place_success_rate": 1.0,
+        "place_denominator": 1,
+        "collision_rate": 0.0,
+        "timeout_rate": 0.0,
+        "average_duration_seconds": 9.629125476999889,
+        "median_duration_seconds": 9.629125476999889,
+        "failures": {}
+      },
+      "place_blue_right_of_red": {
+        "episodes": 1,
+        "successful_episodes": 1,
+        "overall_success_rate": 1.0,
+        "parse_success_rate": 1.0,
+        "pick_success_rate": 1.0,
+        "pick_denominator": 1,
+        "place_success_rate": 1.0,
+        "place_denominator": 1,
+        "collision_rate": 0.0,
+        "timeout_rate": 0.0,
+        "average_duration_seconds": 10.374483748999864,
+        "median_duration_seconds": 10.374483748999864,
+        "failures": {}
+      },
+      "swap_red_blue": {
+        "episodes": 1,
+        "successful_episodes": 1,
+        "overall_success_rate": 1.0,
+        "parse_success_rate": 1.0,
+        "pick_success_rate": 1.0,
+        "pick_denominator": 1,
+        "place_success_rate": 1.0,
+        "place_denominator": 1,
+        "collision_rate": 0.0,
+        "timeout_rate": 0.0,
+        "average_duration_seconds": 27.721627274000184,
+        "median_duration_seconds": 27.721627274000184,
+        "failures": {}
+      }
+    },
+    "kinova_gen3": {
+      "move_blue_right": {
+        "episodes": 1,
+        "successful_episodes": 1,
+        "overall_success_rate": 1.0,
+        "parse_success_rate": 1.0,
+        "pick_success_rate": 1.0,
+        "pick_denominator": 1,
+        "place_success_rate": 1.0,
+        "place_denominator": 1,
+        "collision_rate": 0.0,
+        "timeout_rate": 0.0,
+        "average_duration_seconds": 12.483226106000075,
+        "median_duration_seconds": 12.483226106000075,
+        "failures": {}
+      },
+      "move_red_left": {
+        "episodes": 1,
+        "successful_episodes": 1,
+        "overall_success_rate": 1.0,
+        "parse_success_rate": 1.0,
+        "pick_success_rate": 1.0,
+        "pick_denominator": 1,
+        "place_success_rate": 1.0,
+        "place_denominator": 1,
+        "collision_rate": 0.0,
+        "timeout_rate": 0.0,
+        "average_duration_seconds": 14.160471892000714,
+        "median_duration_seconds": 14.160471892000714,
+        "failures": {}
+      },
+      "swap_red_blue": {
+        "episodes": 1,
+        "successful_episodes": 0,
+        "overall_success_rate": 0.0,
+        "parse_success_rate": 1.0,
+        "pick_success_rate": 0.0,
+        "pick_denominator": 1,
+        "place_success_rate": null,
+        "place_denominator": 0,
+        "collision_rate": 0.0,
+        "timeout_rate": 1.0,
+        "average_duration_seconds": 2.7667448289994354,
+        "median_duration_seconds": 2.7667448289994354,
+        "failures": {
+          "timeout": {
+            "count": 1,
+            "rate": 1.0
+          }
+        }
+      }
+    },
+    "ur5e": {
+      "move_blue_right": {
+        "episodes": 1,
+        "successful_episodes": 1,
+        "overall_success_rate": 1.0,
+        "parse_success_rate": 1.0,
+        "pick_success_rate": 1.0,
+        "pick_denominator": 1,
+        "place_success_rate": 1.0,
+        "place_denominator": 1,
+        "collision_rate": 0.0,
+        "timeout_rate": 0.0,
+        "average_duration_seconds": 11.881413608999537,
+        "median_duration_seconds": 11.881413608999537,
+        "failures": {}
+      },
+      "place_red_left_of_blue": {
+        "episodes": 1,
+        "successful_episodes": 1,
+        "overall_success_rate": 1.0,
+        "parse_success_rate": 1.0,
+        "pick_success_rate": 1.0,
+        "pick_denominator": 1,
+        "place_success_rate": 1.0,
+        "place_denominator": 1,
+        "collision_rate": 0.0,
+        "timeout_rate": 0.0,
+        "average_duration_seconds": 13.201475859000311,
+        "median_duration_seconds": 13.201475859000311,
+        "failures": {}
+      },
+      "swap_red_blue": {
+        "episodes": 1,
+        "successful_episodes": 1,
+        "overall_success_rate": 1.0,
+        "parse_success_rate": 1.0,
+        "pick_success_rate": 1.0,
+        "pick_denominator": 1,
+        "place_success_rate": 1.0,
+        "place_denominator": 1,
+        "collision_rate": 0.0,
+        "timeout_rate": 0.0,
+        "average_duration_seconds": 38.0767336910003,
+        "median_duration_seconds": 38.0767336910003,
+        "failures": {}
+      }
+    }
+  }
+}

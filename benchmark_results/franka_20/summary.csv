@@ -1,0 +1,2 @@
+robot,episodes,parse_success_rate,pick_success_rate,place_success_rate,overall_success_rate,collision_rate,timeout_rate,average_duration_seconds
+franka_fr3,20,1.0,1.0,0.9,0.9,0.1,0.0,15.116872291050004

@@ -1,3 +1,17 @@
+VGArm 0.2.0
+============
+
+- Added deterministic collision-aware target-region search with configurable
+  object-size clearance and explicit `no_safe_target` failures.
+- Added a Kinova Gen3 top-down tool orientation adapted to Menagerie's
+  `pinch_site`, eliminating the sideways object push seen in v0.1.2.
+- Expanded episode geometry, grasp, path and collision diagnostics.
+- Added per-task reports, robot/task matrices and deterministic SHA-256
+  benchmark comparison.
+- Added a source build configuration and verified wheel installation workflow.
+- Added real MuJoCo benchmark visualization with per-step synchronization and
+  deterministic episode replay from recorded scene and planning state.
+
 VGArm 0.1.2 Release
 ====================
 

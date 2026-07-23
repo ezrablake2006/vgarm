@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Callable, Iterable, Optional, Sequence
 
 import mujoco
@@ -90,8 +90,33 @@ class ActuatedJoint:
     upper: float
 
 
+@dataclass
+class ActionStageResult:
+    object_name: str
+    pick_attempted: bool = False
+    pick_success: bool = False
+    place_attempted: bool = False
+    place_success: bool = False
+    failure_stage: str | None = None
+    planned_target_position: list[float] | None = None
+    transport_waypoints: list[list[float]] = field(default_factory=list)
+    grasp_diagnostics: dict | None = None
+    collision_diagnostics: dict | None = None
+
+
 class ControlFailure(RuntimeError):
     """Raised when a motion, grasp, placement, or recovery check fails."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        stage: str | None = None,
+        category: str | None = None,
+    ):
+        super().__init__(message)
+        self.stage = stage
+        self.category = category
 
 
 _TARGET_OFFSETS: dict[str, TargetOffset] = {
@@ -213,6 +238,14 @@ class PickPlaceExecutor:
         self.data = data
         self.robot = robot
         self.config = config or ControllerConfig()
+        if robot.transit_max_steps is not None:
+            self.config = replace(
+                self.config,
+                transit_profile=replace(
+                    self.config.transit_profile,
+                    max_steps=robot.transit_max_steps,
+                ),
+            )
         self.attachment_site = _site_id(model, robot.attachment_site_name)
         self.object_names = tuple(object_names)
         self.eq_for_object = {
@@ -229,6 +262,7 @@ class PickPlaceExecutor:
             raise ControlFailure("no actuated joints found between robot base and attachment site")
         self._sync = sync
         self._held_object: str | None = None
+        self.execution_trace: list[ActionStageResult] = []
         self._initialize_home_pose()
         self.step(self.config.settle_steps)
         mujoco.mj_forward(self.model, self.data)
@@ -240,6 +274,35 @@ class PickPlaceExecutor:
             model, int(model.site_bodyid[self.attachment_site])
         )
         self._baseline_robot_contacts = self._robot_contact_pairs()
+        self._active_action: ActionStageResult | None = None
+        self._motion_phase: str | None = None
+        self._motion_waypoint_index: int | None = None
+        if robot.grasp_orientation is not None:
+            self._safe_orientation = np.asarray(
+                robot.grasp_orientation, dtype=float
+            ).reshape(3, 3)
+            alignment = replace(
+                self.config.precision_profile,
+                max_steps=max(
+                    robot.orientation_alignment_steps,
+                    self.config.precision_profile.max_steps,
+                ),
+                max_joint_speed=0.9,
+                orientation_tolerance=0.08,
+            )
+            position, _ = self.current_pose()
+            result = self.move_attachment_to(
+                position,
+                self._safe_orientation,
+                check_collisions=False,
+                profile=alignment,
+            )
+            if not result.success:
+                raise ControlFailure(
+                    f"tool orientation alignment failed: {result.reason}",
+                    stage="initialization",
+                    category="ik_failed",
+                )
 
     def _initialize_home_pose(self) -> None:
         home_key = mujoco.mj_name2id(
@@ -333,24 +396,45 @@ class PickPlaceExecutor:
                 if pair in self._baseline_robot_contacts:
                     continue
                 if robot_a and robot_b:
-                    return (
+                    message = (
                         f"robot self-collision: {self._body_name(body_a)} / "
                         f"{self._body_name(body_b)}"
                     )
+                    self._record_collision(body_a, body_b)
+                    return message
                 other_body = body_b if robot_a else body_a
                 if other_body == held_body or other_body in allowed_bodies:
                     continue
+                self._record_collision(body_a, body_b)
                 return f"robot collision with {self._body_name(other_body)}"
             if held_body is not None and held_body in (body_a, body_b):
                 other_body = body_b if body_a == held_body else body_a
                 if other_body not in self._robot_body_ids:
                     if allow_held_environment_contact:
                         continue
+                    self._record_collision(body_a, body_b)
                     return (
                         f"held object collision: {self._body_name(held_body)} / "
                         f"{self._body_name(other_body)}"
                     )
         return None
+
+    def _record_collision(self, body_a: int, body_b: int) -> None:
+        if getattr(self, "_active_action", None) is None:
+            return
+        held = self._held_object
+        obstacle_body = body_b if held and body_a == self.object_body_ids.get(held) else body_a
+        obstacle = self._object_name_by_body.get(obstacle_body, self._body_name(obstacle_body))
+        def position(body_id: int) -> list[float]:
+            return [float(value) for value in self.data.xpos[body_id]]
+        self._active_action.collision_diagnostics = {
+            "held_object": held,
+            "obstacle": obstacle,
+            "phase": self._motion_phase,
+            "waypoint_index": self._motion_waypoint_index,
+            "held_object_position": position(self.object_body_ids[held]) if held else None,
+            "obstacle_position": position(obstacle_body),
+        }
 
     def current_pose(self) -> tuple[np.ndarray, np.ndarray]:
         mujoco.mj_forward(self.model, self.data)
@@ -578,6 +662,15 @@ class PickPlaceExecutor:
         for segment_name, (waypoint, waypoint_allowed, waypoint_profile) in zip(
             segment_names, waypoints
         ):
+            self._motion_phase = segment_name.replace("-", "_")
+            active_action = getattr(self, "_active_action", None)
+            self._motion_waypoint_index = len(
+                active_action.transport_waypoints
+            ) if active_action is not None else None
+            if active_action is not None:
+                self._active_action.transport_waypoints.append(
+                    [float(value) for value in waypoint]
+                )
             last = self.move_linear(
                 waypoint,
                 allowed_object_names=waypoint_allowed,
@@ -599,13 +692,27 @@ class PickPlaceExecutor:
             total_steps,
         )
 
-    @staticmethod
-    def _require(result: MotionResult, segment: str) -> None:
+    def _require(self, result: MotionResult, segment: str) -> None:
         if not result.success:
+            reason = result.reason or "motion failed"
+            if "collision" in reason:
+                category = "collision"
+            elif "timeout" in reason:
+                category = "timeout"
+            else:
+                category = "ik_failed"
+            # Collision geometry is captured when contact is detected; attach
+            # numerical solver state without parsing console output.
+            active = getattr(self, "_active_action", None)
+            if active is not None and active.collision_diagnostics is not None:
+                active.collision_diagnostics["position_error"] = result.position_error
+                active.collision_diagnostics["orientation_error"] = result.orientation_error
             raise ControlFailure(
-                f"{segment} failed: {result.reason}; "
+                f"{segment} failed: {reason}; "
                 f"position_error={result.position_error:.4f}, "
-                f"orientation_error={result.orientation_error:.4f}"
+                f"orientation_error={result.orientation_error:.4f}",
+                stage=segment,
+                category=category,
             )
 
     def body_xy(self, body_name: str) -> tuple[float, float]:
@@ -706,6 +813,9 @@ class PickPlaceExecutor:
         body_id = self.object_body_ids[object_name]
         release_height = self._release_site_height(object_name, support_z=0.0)
         attached = False
+        action = ActionStageResult(object_name=object_name, pick_attempted=True)
+        self.execution_trace.append(action)
+        self._active_action = action
 
         try:
             mujoco.mj_forward(self.model, self.data)
@@ -727,12 +837,45 @@ class PickPlaceExecutor:
             self._require(refinement, "grasp refinement")
             current_position, _ = self.current_pose()
             mujoco.mj_forward(self.model, self.data)
+            actual_position = np.asarray(current_position, dtype=float)
+            live_target = np.asarray(self.data.site_xpos[grab_site], dtype=float)
             grasp_error = float(
-                np.linalg.norm(current_position - self.data.site_xpos[grab_site])
+                np.linalg.norm(actual_position - live_target)
             )
+            lower, upper = self._joint_limits()
+            joints = self._joint_positions()
+            actual_orientation = self.current_pose()[1]
+            action.grasp_diagnostics = {
+                "robot": self.robot.robot_id,
+                "robot_model_path": str(self.robot.include_xml_path),
+                "attachment_site_name": self.robot.attachment_site_name,
+                "object_grab_site_name": f"{object_name}_grab",
+                "target_tcp_position": live_target.tolist(),
+                "actual_tcp_position": actual_position.tolist(),
+                "position_error_vector": (live_target - actual_position).tolist(),
+                "position_error_norm": grasp_error,
+                "target_orientation": self._safe_orientation.tolist(),
+                "actual_orientation": actual_orientation.tolist(),
+                "orientation_error": float(
+                    np.linalg.norm(rotation_error(actual_orientation, self._safe_orientation))
+                ),
+                "joint_positions": joints.tolist(),
+                "joint_limits": list(zip(lower.tolist(), upper.tolist())),
+                "at_joint_limit": bool(
+                    np.any(joints <= lower + self.config.joint_limit_margin + 1e-6)
+                    or np.any(joints >= upper - self.config.joint_limit_margin - 1e-6)
+                ),
+                "ik_iterations": refinement.steps,
+                "ik_stopping_reason": refinement.reason or "converged",
+                "position_task_weight": 1.0,
+                "orientation_task_weight": self.config.orientation_weight,
+                "damping": self.config.damping,
+            }
             if grasp_error > 0.006:
                 raise ControlFailure(
-                    f"grasp verification failed: site error={grasp_error:.4f}"
+                    f"grasp verification failed: site error={grasp_error:.4f}",
+                    stage="grasp",
+                    category="grasp_failed",
                 )
 
             initial_object_z = float(self.data.xpos[body_id, 2])
@@ -760,9 +903,16 @@ class PickPlaceExecutor:
             self._require(lift, "lift")
             mujoco.mj_forward(self.model, self.data)
             if float(self.data.xpos[body_id, 2]) < initial_object_z + 0.05:
-                raise ControlFailure("lift verification failed: object did not rise")
+                raise ControlFailure(
+                    "lift verification failed: object did not rise",
+                    stage="lift",
+                    category="object_dropped",
+                )
+            action.pick_success = True
 
             place_target = [target_xy[0], target_xy[1], release_height]
+            action.planned_target_position = [float(value) for value in place_target]
+            action.place_attempted = True
             transport = self.move_via_safe_height(
                 place_target,
                 allowed_object_names=(object_name,),
@@ -787,10 +937,15 @@ class PickPlaceExecutor:
             if target_error > 0.03 or final_z < half_height * 0.75:
                 raise ControlFailure(
                     f"placement verification failed: xy_error={target_error:.4f}, "
-                    f"z={final_z:.4f}"
+                    f"z={final_z:.4f}",
+                    stage="placement",
+                    category="placement_failed",
                 )
+            action.place_success = True
             self._recover_upward()
-        except Exception:
+        except Exception as error:
+            if isinstance(error, ControlFailure):
+                action.failure_stage = error.stage
             if attached:
                 self._recover_attached_object(
                     object_name,
@@ -803,6 +958,8 @@ class PickPlaceExecutor:
                 mujoco.mj_forward(self.model, self.data)
                 self._recover_upward()
             raise
+        finally:
+            self._active_action = None
 
     def resolve_target_xy(
         self,

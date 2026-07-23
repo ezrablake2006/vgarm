@@ -1,0 +1,44 @@
+{
+  "overall": {
+    "episodes": 10,
+    "successful_episodes": 9,
+    "overall_success_rate": 0.9,
+    "parse_success_rate": 1.0,
+    "pick_success_rate": 1.0,
+    "pick_denominator": 10,
+    "place_success_rate": 0.9,
+    "place_denominator": 10,
+    "collision_rate": 0.1,
+    "timeout_rate": 0.0,
+    "average_duration_seconds": 16.50436823589998,
+    "median_duration_seconds": 12.595894647500018,
+    "failures": {
+      "collision": {
+        "count": 1,
+        "rate": 0.1
+      }
+    }
+  },
+  "by_robot": {
+    "franka_panda": {
+      "episodes": 10,
+      "successful_episodes": 9,
+      "overall_success_rate": 0.9,
+      "parse_success_rate": 1.0,
+      "pick_success_rate": 1.0,
+      "pick_denominator": 10,
+      "place_success_rate": 0.9,
+      "place_denominator": 10,
+      "collision_rate": 0.1,
+      "timeout_rate": 0.0,
+      "average_duration_seconds": 16.50436823589998,
+      "median_duration_seconds": 12.595894647500018,
+      "failures": {
+        "collision": {
+          "count": 1,
+          "rate": 0.1
+        }
+      }
+    }
+  }
+}

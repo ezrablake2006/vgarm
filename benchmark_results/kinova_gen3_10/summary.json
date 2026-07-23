@@ -1,0 +1,44 @@
+{
+  "overall": {
+    "episodes": 10,
+    "successful_episodes": 0,
+    "overall_success_rate": 0.0,
+    "parse_success_rate": 1.0,
+    "pick_success_rate": 0.0,
+    "pick_denominator": 10,
+    "place_success_rate": null,
+    "place_denominator": 0,
+    "collision_rate": 0.0,
+    "timeout_rate": 0.0,
+    "average_duration_seconds": 6.76517975429997,
+    "median_duration_seconds": 6.389075085999821,
+    "failures": {
+      "grasp_failed": {
+        "count": 10,
+        "rate": 1.0
+      }
+    }
+  },
+  "by_robot": {
+    "kinova_gen3": {
+      "episodes": 10,
+      "successful_episodes": 0,
+      "overall_success_rate": 0.0,
+      "parse_success_rate": 1.0,
+      "pick_success_rate": 0.0,
+      "pick_denominator": 10,
+      "place_success_rate": null,
+      "place_denominator": 0,
+      "collision_rate": 0.0,
+      "timeout_rate": 0.0,
+      "average_duration_seconds": 6.76517975429997,
+      "median_duration_seconds": 6.389075085999821,
+      "failures": {
+        "grasp_failed": {
+          "count": 10,
+          "rate": 1.0
+        }
+      }
+    }
+  }
+}

@@ -7,13 +7,34 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: python -m pip install .
-      - run: python -m unittest discover -s source/vgarm_app/tests -p 'test_*.py'
-      - run: vgarm --help
-      - run: vgarm benchmark --help
-      - run: git diff --check
+
+      - name: Install package with RGB dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[rgb]"
+
+      - name: Run tests
+        env:
+          MUJOCO_GL: egl
+        run: |
+          python -m unittest discover \
+            -s source/vgarm_app/tests \
+            -p 'test_*.py'
+
+      - name: Check main CLI
+        run: vgarm --help
+
+      - name: Check benchmark CLI
+        run: vgarm benchmark --help
+
+      - name: Check whitespace errors
+        run: git diff --check

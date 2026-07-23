@@ -233,6 +233,7 @@ class PickPlaceExecutor:
         object_names: Iterable[str],
         sync: Callable[[], None] | None = None,
         config: ControllerConfig | None = None,
+        step_recorder=None,
     ):
         self.model = model
         self.data = data
@@ -261,6 +262,7 @@ class PickPlaceExecutor:
         if not self._actuated:
             raise ControlFailure("no actuated joints found between robot base and attachment site")
         self._sync = sync
+        self._step_recorder = step_recorder
         self._held_object: str | None = None
         self.execution_trace: list[ActionStageResult] = []
         self._initialize_home_pose()
@@ -341,9 +343,14 @@ class PickPlaceExecutor:
 
     def step(self, count: int = 1) -> None:
         for _ in range(count):
+            if self._step_recorder is not None:
+                self._step_recorder.record_pre_step(self)
             mujoco.mj_step(self.model, self.data)
             if self._sync is not None:
                 self._sync()
+
+    def set_step_recorder(self, recorder) -> None:
+        self._step_recorder = recorder
 
     def _body_name(self, body_id: int) -> str:
         if body_id == 0:
@@ -502,6 +509,12 @@ class PickPlaceExecutor:
             )
             position_norm = float(np.linalg.norm(position_delta))
             orientation_norm = float(np.linalg.norm(orientation_delta))
+            self._current_eef_target = target_position.copy()
+            self._current_eef_orientation_target = orientation_target.copy()
+            self._ik_iteration = step_index
+            self._position_error = position_norm
+            self._orientation_error = orientation_norm
+            self._ik_stopping_reason = None
             if (
                 position_norm <= motion_profile.position_tolerance
                 and orientation_norm <= motion_profile.orientation_tolerance
@@ -816,6 +829,7 @@ class PickPlaceExecutor:
         action = ActionStageResult(object_name=object_name, pick_attempted=True)
         self.execution_trace.append(action)
         self._active_action = action
+        self._control_skill = "pick_place"
 
         try:
             mujoco.mj_forward(self.model, self.data)
@@ -881,6 +895,7 @@ class PickPlaceExecutor:
             initial_object_z = float(self.data.xpos[body_id, 2])
             self.data.eq_active[equality_id] = 1
             self._held_object = object_name
+            self._motion_phase = "grasp"
             attached = True
             mujoco.mj_forward(self.model, self.data)
             self.step(20)
@@ -911,6 +926,7 @@ class PickPlaceExecutor:
             action.pick_success = True
 
             place_target = [target_xy[0], target_xy[1], release_height]
+            self._motion_phase = "transport"
             action.planned_target_position = [float(value) for value in place_target]
             action.place_attempted = True
             transport = self.move_via_safe_height(
@@ -924,8 +940,10 @@ class PickPlaceExecutor:
 
             self.data.eq_active[equality_id] = 0
             self._held_object = None
+            self._motion_phase = "release"
             attached = False
             mujoco.mj_forward(self.model, self.data)
+            self._motion_phase = "settle"
             self.step(self.config.settle_steps)
 
             final_xy = np.asarray(self.body_xy(object_name))

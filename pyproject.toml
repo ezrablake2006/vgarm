@@ -4,17 +4,19 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "vgarm"
-version = "0.2.0"
-description = "Vision-guided robot arm interaction with reproducible MuJoCo benchmarks"
+version = "0.3.0"
+description = "Reproducible MuJoCo manipulation benchmarks and trajectory datasets"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
   "numpy>=1.23",
   "mujoco>=3.0",
+  "duckdb>=1.1",
 ]
 
 [project.optional-dependencies]
 gui = ["pillow>=10.0"]
+lerobot = ["lerobot>=0.4.0"]
 
 [project.scripts]
 vgarm = "vgarm.cli:main"

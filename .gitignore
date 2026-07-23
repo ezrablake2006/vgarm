@@ -6,5 +6,14 @@ __pycache__/
 .idea/
 _vgarm_scene_*.xml
 
+# Python build artifacts
+*.egg-info/
+build/
+
 # 第三方机器人模型不直接提交
 third_party/mujoco_menagerie/
+
+# Generated experiment and trajectory data
+/manual_acceptance/
+/datasets/
+**/.incomplete/

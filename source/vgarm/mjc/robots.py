@@ -22,6 +22,9 @@ def _menagerie_root() -> Path:
         return Path(configured).expanduser().resolve()
     here = Path(__file__).resolve()
     repo_root = here.parents[2]
+    vendored = repo_root.parent / "third_party" / "mujoco_menagerie"
+    if vendored.is_dir():
+        return vendored
     return repo_root / "mujoco_menagerie-main" / "mujoco_menagerie-main"
 
 

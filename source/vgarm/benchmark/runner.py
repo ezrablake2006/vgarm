@@ -90,10 +90,13 @@ class BenchmarkRunner:
         *,
         episode_executor: Callable | None = None,
         viewer_factory: Callable | None = None,
+        recorder_factory: Callable | None = None,
     ):
         self.config = config
         self._episode_executor = episode_executor
         self._viewer_factory = viewer_factory
+        self._recorder_factory = recorder_factory
+        self.recorders: dict[tuple[str, int], object] = {}
 
     def _task_order(self, robot_index: int) -> list[TaskSpec]:
         rng = random.Random(self.config.seed + robot_index)
@@ -164,6 +167,18 @@ class BenchmarkRunner:
                     sync=session.sync if not self.config.no_viewer else None,
                 )
                 initial = {name: executor.body_xy(name) for name in built.object_names}
+                if self._recorder_factory is not None:
+                    recorder = self._recorder_factory(
+                        robot_name,
+                        task,
+                        episode_seed,
+                        executor,
+                        layout,
+                        initial,
+                        built.xml_text,
+                    )
+                    self.recorders[(robot_name, episode_seed)] = recorder
+                    executor.set_step_recorder(recorder)
                 selected = _select_object(layout.objects, intent.object_color, intent.object_category)
                 reference = None
                 if intent.kind in ("move_next_to_object", "swap"):

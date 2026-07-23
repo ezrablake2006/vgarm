@@ -256,10 +256,172 @@ def _benchmark_main(argv: list[str]) -> int:
     return 0
 
 
+def _dataset_main(argv: list[str]) -> int:
+    if not argv:
+        argv = ["--help"]
+    command = argv[0]
+    if command == "generate":
+        from vgarm.trajectory.dataset import generate_dataset
+        from vgarm.trajectory.models import DatasetConfig
+        from vgarm.trajectory.util import atomic_json
+
+        parser = argparse.ArgumentParser(prog="vgarm dataset generate")
+        parser.add_argument("--scene", type=Path, required=True)
+        parser.add_argument("--tasks", type=Path, required=True)
+        parser.add_argument("--robots", default="franka_fr3")
+        parser.add_argument("--episodes", type=int, default=1)
+        parser.add_argument("--seed", type=int, default=42)
+        parser.add_argument("--position-jitter", type=float, default=0.0)
+        parser.add_argument("--modalities", default="state")
+        viewer = parser.add_mutually_exclusive_group()
+        viewer.add_argument("--viewer", dest="no_viewer", action="store_false")
+        viewer.add_argument("--no-viewer", dest="no_viewer", action="store_true")
+        parser.set_defaults(no_viewer=True)
+        parser.add_argument("--output", type=Path, required=True)
+        output_mode = parser.add_mutually_exclusive_group()
+        output_mode.add_argument("--overwrite", action="store_true")
+        output_mode.add_argument("--resume", action="store_true")
+        parser.add_argument("--fail-fast", action="store_true")
+        parser.add_argument("--quiet", action="store_true")
+        parser.add_argument("--verbose", action="store_true")
+        args = parser.parse_args(argv[1:])
+        if args.episodes <= 0:
+            parser.error("--episodes must be greater than zero")
+        if args.position_jitter < 0:
+            parser.error("--position-jitter must be non-negative")
+        modalities = tuple(
+            item.strip() for item in args.modalities.split(",") if item.strip()
+        )
+        unsupported = set(modalities) - {"state"}
+        if unsupported:
+            parser.error(
+                "this build currently supports state recording only; unsupported: "
+                + ", ".join(sorted(unsupported))
+            )
+        robots = tuple(
+            item.strip() for item in args.robots.split(",") if item.strip()
+        )
+        known = available_robots()
+        unknown = set(robots) - set(known)
+        if unknown:
+            parser.error("unknown robot(s): " + ", ".join(sorted(unknown)))
+        root = args.output.resolve()
+        results = {}
+        for robot in robots:
+            child = root / robot if len(robots) > 1 else root
+            config = DatasetConfig(
+                root=child,
+                scene=args.scene.resolve(),
+                robot=robot,
+                tasks_file=args.tasks.resolve(),
+                episodes=args.episodes,
+                seed=args.seed,
+                position_jitter=args.position_jitter,
+                modalities=modalities,
+                no_viewer=args.no_viewer,
+                overwrite=args.overwrite,
+                resume=args.resume,
+                fail_fast=args.fail_fast,
+                quiet=args.quiet,
+                verbose=args.verbose,
+            )
+            try:
+                results[robot] = generate_dataset(config)
+            except (FileExistsError, ValueError) as error:
+                parser.error(str(error))
+        if len(robots) > 1:
+            atomic_json(root / "manifest.json", {
+                "format": "VGArm multi-robot trajectory dataset",
+                "robots": list(robots),
+                "subdatasets": {robot: robot for robot in robots},
+            })
+        if not args.quiet:
+            for robot, stats in results.items():
+                print(
+                    f"{robot}: {stats['episodes']} episode(s), "
+                    f"{stats['total_physics_steps']} steps"
+                )
+            print(f"Dataset: {root}")
+        return 0
+    if command in {"inspect", "stats", "validate"}:
+        parser = argparse.ArgumentParser(prog=f"vgarm dataset {command}")
+        parser.add_argument("dataset", type=Path)
+        args = parser.parse_args(argv[1:])
+        if command == "inspect":
+            from vgarm.trajectory.reader import read_episodes
+
+            dataset = json.loads(
+                (args.dataset / "meta" / "dataset.json").read_text()
+            )
+            episodes = read_episodes(args.dataset)
+            print(json.dumps({
+                "dataset": dataset,
+                "episodes": len(episodes),
+                "completed_episode_ids": [item["episode_id"] for item in episodes],
+            }, ensure_ascii=False, indent=2))
+            return 0
+        if command == "stats":
+            from vgarm.trajectory.stats import compute_stats
+
+            print(json.dumps(
+                compute_stats(args.dataset), ensure_ascii=False, indent=2
+            ))
+            return 0
+        from vgarm.trajectory.validator import validate_dataset
+
+        report = validate_dataset(args.dataset)
+        print("PASS" if report["passed"] else "FAIL")
+        print(json.dumps(report, ensure_ascii=False, indent=2))
+        return 0 if report["passed"] else 1
+    if command == "replay":
+        from vgarm.trajectory.replay import replay_trajectory
+
+        parser = argparse.ArgumentParser(prog="vgarm dataset replay")
+        parser.add_argument("dataset", type=Path)
+        parser.add_argument("--episode-id", type=int, required=True)
+        viewer = parser.add_mutually_exclusive_group()
+        viewer.add_argument("--viewer", dest="no_viewer", action="store_false")
+        viewer.add_argument("--no-viewer", dest="no_viewer", action="store_true")
+        parser.set_defaults(no_viewer=True)
+        parser.add_argument("--speed", type=float, default=1.0)
+        args = parser.parse_args(argv[1:])
+        if args.speed <= 0:
+            parser.error("--speed must be greater than zero")
+        try:
+            result = replay_trajectory(
+                args.dataset,
+                args.episode_id,
+                no_viewer=args.no_viewer,
+                speed=args.speed,
+            )
+        except (OSError, ValueError) as error:
+            parser.error(str(error))
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        return 0 if result["matched"] else 1
+    if command == "export-lerobot":
+        from vgarm.trajectory.lerobot_export import export_lerobot
+
+        parser = argparse.ArgumentParser(prog="vgarm dataset export-lerobot")
+        parser.add_argument("dataset", type=Path)
+        parser.add_argument("--output", type=Path, required=True)
+        args = parser.parse_args(argv[1:])
+        try:
+            result = export_lerobot(args.dataset, args.output)
+        except (FileExistsError, OSError, RuntimeError, ValueError) as error:
+            parser.error(str(error))
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        return 0
+    parser = argparse.ArgumentParser(prog="vgarm dataset")
+    parser.print_help()
+    return 2
+
+
 def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
     if argv and argv[0] == "benchmark":
         return _benchmark_main(argv[1:])
+    if argv and argv[0] == "dataset":
+        return _dataset_main(argv[1:])
     parser = argparse.ArgumentParser(prog="vgarm")
     parser.add_argument(
         "--robot",

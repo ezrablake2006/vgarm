@@ -1,3 +1,14 @@
+VGArm 0.3.0
+
+- 新增 VGArm Trajectory Dataset v1：逐 MuJoCo 物理步记录 observation、
+  实际 data.ctrl、关节/笛卡尔目标与结构化控制阶段。
+- 使用 mjSTATE_INTEGRATION 保存可恢复的初始/最终物理状态，并支持不运行
+  IK 的低层 action replay 与严格漂移检查。
+- 新增 dataset generate/inspect/validate/replay/stats/export-lerobot CLI。
+- 每机器人独立固定维度 schema；多机器人输出顶层 manifest 与子数据集。
+- episode 使用 .incomplete、原子 rename、SHA-256 与 fsync，支持确定性 resume。
+- 原生 Parquet 使用 DuckDB；LeRobot 为可选依赖，RGB 尚未在本版本启用。
+
 VGArm 0.2.0
 ============
 

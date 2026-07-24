@@ -4,9 +4,13 @@ on:
   push:
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 40
 
     env:
       MUJOCO_GL: osmesa
@@ -27,18 +31,19 @@ jobs:
 
       - name: Show Menagerie revision
         run: |
-          echo "MuJoCo Menagerie commit:"
-          git -C third_party/mujoco_menagerie rev-parse HEAD
+          echo "VGARM_MENAGERIE_ROOT=$VGARM_MENAGERIE_ROOT"
+          git -C "$VGARM_MENAGERIE_ROOT" rev-parse HEAD
+          test -d "$VGARM_MENAGERIE_ROOT/franka_fr3"
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.12"
 
-      - name: Install headless rendering libraries
+      - name: Install OSMesa
         run: |
           sudo apt-get update
-          sudo apt-get install -y \
+          sudo apt-get install -y --no-install-recommends \
             libosmesa6-dev \
             libgl1-mesa-dri
 
@@ -47,23 +52,25 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -e ".[rgb]"
 
-      - name: Checkout MuJoCo Menagerie
-        uses: actions/checkout@v4
-        with:
-          repository: google-deepmind/mujoco_menagerie
-          ref: f809e257c7a2fd67805d0d87eb02fcc205948ef7
-          path: third_party/mujoco_menagerie
+      - name: Verify package and MuJoCo
+        run: |
+          python - <<'PY'
+          import mujoco
+          import vgarm
+
+          print("MuJoCo version:", mujoco.__version__)
+          print("VGArm version:", vgarm.__version__)
+          print("VGArm module:", vgarm.__file__)
+
+          assert "/source/vgarm/" in vgarm.__file__.replace("\\", "/")
+          PY
 
       - name: Run tests
         run: |
-          python -W error::ResourceWarning -m unittest discover \
+          python -W error::ResourceWarning -X tracemalloc=10 \
+            -m unittest discover \
             -s source/vgarm_app/tests \
             -p 'test_*.py'
-
-      - name: Real depth and segmentation rendering smoke
-        run: |
-          python -W error::ResourceWarning -m unittest \
-            vgarm_app.tests.test_trajectory.DepthSegmentationTests.test_metric_depth_segmentation_and_chunk_boundary
 
       - name: Check main CLI
         run: vgarm --help
@@ -71,5 +78,8 @@ jobs:
       - name: Check benchmark CLI
         run: vgarm benchmark --help
 
-      - name: Check whitespace errors
+      - name: Check dataset CLI
+        run: vgarm dataset --help
+
+      - name: Check whitespace
         run: git diff --check

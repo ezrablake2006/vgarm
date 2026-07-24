@@ -16,13 +16,19 @@ jobs:
 
     steps:
       - name: Checkout VGArm
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Checkout MuJoCo Menagerie
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           repository: google-deepmind/mujoco_menagerie
+          ref: main
           path: third_party/mujoco_menagerie
+
+      - name: Show Menagerie revision
+        run: |
+          echo "MuJoCo Menagerie commit:"
+          git -C third_party/mujoco_menagerie rev-parse HEAD
 
       - name: Set up Python
         uses: actions/setup-python@v5

@@ -14,7 +14,7 @@ from vgarm import __version__
 
 from .schema import build_schema
 from .util import atomic_json, sha256_file
-from .cameras import EpisodeRgbRecorder, validate_rgb_configuration
+from .cameras import EpisodeVisualRecorder, validate_visual_configuration
 
 
 STATE_SPEC = mujoco.mjtState.mjSTATE_INTEGRATION
@@ -40,9 +40,10 @@ class TrajectoryRecorder:
         viewer_enabled: bool,
         modalities: tuple[str, ...] = ("state",),
         cameras: tuple[str, ...] = (),
-        rgb_width: int = 640,
-        rgb_height: int = 480,
-        rgb_fps: float = 20.0,
+        visual_width: int = 640,
+        visual_height: int = 480,
+        visual_fps: float = 20.0,
+        visual_chunk_frames: int = 64,
         renderer_factory=None,
         writer_factory=None,
     ):
@@ -58,34 +59,36 @@ class TrajectoryRecorder:
         self.initial_object_positions = initial_object_positions
         self.viewer_enabled = viewer_enabled
         self.modalities = modalities
-        validate_rgb_configuration(
-            modalities, cameras, rgb_width, rgb_height, rgb_fps
+        validate_visual_configuration(
+            modalities, cameras, visual_width, visual_height, visual_fps,
+            visual_chunk_frames,
         )
         self.rows: list[dict] = []
         self.started = time.monotonic()
         self.incomplete = self.root / ".incomplete" / f"episode_{episode_id:06d}"
         self.incomplete.mkdir(parents=True, exist_ok=False)
-        self.rgb = None
+        self.visual = None
         camera_schema = {}
-        if "rgb" in modalities:
-            if not cameras:
-                raise ValueError("RGB recording requires at least one --cameras name")
-            self.rgb = EpisodeRgbRecorder(
+        if any(item != "state" for item in modalities):
+            self.visual = EpisodeVisualRecorder(
                 self.model,
                 self.data,
-                self.incomplete / "videos",
+                self.incomplete,
+                modalities=modalities,
                 cameras=cameras,
-                width=rgb_width,
-                height=rgb_height,
-                fps=rgb_fps,
+                width=visual_width,
+                height=visual_height,
+                fps=visual_fps,
+                chunk_frames=visual_chunk_frames,
                 renderer_factory=renderer_factory,
                 writer_factory=writer_factory,
             )
             camera_schema = {
                 "cameras": list(cameras),
-                "width": rgb_width,
-                "height": rgb_height,
-                "requested_fps": rgb_fps,
+                "width": visual_width,
+                "height": visual_height,
+                "requested_fps": visual_fps,
+                "chunk_frames": visual_chunk_frames,
                 "codec": "h264",
                 "pixel_format": "yuv420p",
                 "container": "mp4",
@@ -206,8 +209,8 @@ class TrajectoryRecorder:
             ),
         }
         visual = (
-            self.rgb.sample(len(self.rows), float(self.data.time))
-            if self.rgb is not None else None
+            self.visual.sample(len(self.rows), float(self.data.time))
+            if self.visual is not None else None
         )
         self.rows.append({
             "episode_id": self.episode_id,
@@ -236,14 +239,44 @@ class TrajectoryRecorder:
         })
 
     def abort(self, reason: str) -> None:
-        if self.rgb is not None:
-            self.rgb.abort()
+        if self.visual is not None:
+            self.visual.abort()
+        (self.incomplete / "ABORTED").write_text(reason, encoding="utf-8")
+
+    def _restore_commit_moves(self, moves) -> None:
+        for source, target in reversed(moves):
+            if target.exists():
+                source.parent.mkdir(parents=True, exist_ok=True)
+                os.replace(target, source)
+        for base in (
+            self.root / "videos" / f"episode_{self.episode_id:06d}",
+            self.root / "arrays" / f"episode_{self.episode_id:06d}",
+        ):
+            if base.exists():
+                shutil.rmtree(base)
+
+    def finalize_commit(self) -> None:
+        """Remove staging only after durable episode metadata was appended."""
+        if self.incomplete.exists():
+            shutil.rmtree(self.incomplete)
+        self._commit_moves = []
+
+    def rollback_commit(self, reason: str) -> None:
+        moves = getattr(self, "_commit_moves", [])
+        self._restore_commit_moves(moves)
+        index_path = getattr(self, "_segmentation_index_path", None)
+        if index_path is not None:
+            index_path.unlink(missing_ok=True)
+        self._commit_moves = []
+        self.incomplete.mkdir(parents=True, exist_ok=True)
         (self.incomplete / "ABORTED").write_text(reason, encoding="utf-8")
 
     def commit(self, result, *, model_xml_hash: str, asset_manifest_hash: str) -> dict:
         if not self.rows:
             raise ValueError("cannot commit empty trajectory episode")
-        video_metadata = self.rgb.close() if self.rgb is not None else {}
+        visual_metadata = self.visual.close() if self.visual is not None else {
+            "videos": {}, "arrays": {}}
+        video_metadata = visual_metadata["videos"]
         self.rows[-1]["terminated"] = True
         self.rows[-1]["success"] = bool(result.task_success)
         self.rows[-1]["failure_category"] = result.failure_category
@@ -274,41 +307,93 @@ class TrajectoryRecorder:
             "initial": self.root / "states" / f"{episode_name}_initial.npz",
             "final": self.root / "states" / f"{episode_name}_final.npz",
         }
-        for directory in ("data", "states", "videos"):
+        for directory in ("data", "states", "videos", "arrays"):
             (self.root / directory).mkdir(parents=True, exist_ok=True)
         final_videos = {}
+        final_arrays = {}
+        segmentation_index_file = None
         moved = []
         video_directory = self.root / "videos" / episode_name
         try:
             os.replace(parquet, paths["trajectory"])
-            moved.append(paths["trajectory"])
+            moved.append((parquet, paths["trajectory"]))
             os.replace(self.incomplete / "initial.npz", paths["initial"])
-            moved.append(paths["initial"])
+            moved.append((self.incomplete / "initial.npz", paths["initial"]))
             os.replace(self.incomplete / "final.npz", paths["final"])
-            moved.append(paths["final"])
+            moved.append((self.incomplete / "final.npz", paths["final"]))
             if video_metadata:
                 video_directory.mkdir(parents=True, exist_ok=False)
                 for name, item in video_metadata.items():
                     source = Path(item.pop("temporary_path"))
                     target = video_directory / f"{name}.mp4"
                     os.replace(source, target)
-                    moved.append(target)
+                    moved.append((source, target))
                     final_videos[name] = {
                         **item,
                         "path": str(target.relative_to(self.root)),
                         "sha256": sha256_file(target),
                         "bytes": target.stat().st_size,
                     }
-            shutil.rmtree(self.incomplete)
+            for camera, modalities in visual_metadata["arrays"].items():
+                for modality, shards in modalities.items():
+                    target_dir = self.root / "arrays" / episode_name / camera / modality
+                    target_dir.mkdir(parents=True, exist_ok=False)
+                    final_arrays.setdefault(camera, {})[modality] = []
+                    for item in shards:
+                        source = Path(item["path"])
+                        target = target_dir / source.name
+                        os.replace(source, target)
+                        moved.append((source, target))
+                        final_arrays[camera][modality].append({
+                            **{k: v for k, v in item.items() if k != "path"},
+                            "path": target.relative_to(self.root).as_posix(),
+                        })
+            if "segmentation" in self.modalities:
+                observed = set()
+                for camera in final_arrays.values():
+                    for shard in camera.get("segmentation", []):
+                        path = self.root / shard["path"]
+                        with path.open("rb") as stream, np.load(
+                            stream, allow_pickle=False) as data:
+                            observed.update(zip(
+                                data["object_id"].reshape(-1).tolist(),
+                                data["object_type"].reshape(-1).tolist(),
+                            ))
+                labels = []
+                enum_names = {
+                    int(value): name.removeprefix("mjOBJ_").lower()
+                    for name, value in mujoco.mjtObj.__members__.items()
+                }
+                for object_id, object_type in sorted(observed, key=lambda x: (x[1], x[0])):
+                    name = None
+                    if object_id >= 0:
+                        try:
+                            name = mujoco.mj_id2name(
+                                self.model, mujoco.mjtObj(object_type), object_id
+                            )
+                        except (ValueError, TypeError):
+                            pass
+                    labels.append({
+                        "object_type": object_type,
+                        "object_type_name": enum_names.get(object_type, "unknown"),
+                        "object_id": object_id,
+                        "name": name,
+                        "observed": True,
+                    })
+                index_path = self.root / "meta" / f"{episode_name}_segmentation_index.json"
+                atomic_json(index_path, {
+                    "channel_order": ["object_id", "object_type"],
+                    "background": {"object_id": -1, "object_type": -1},
+                    "labels": labels,
+                })
+                segmentation_index_file = index_path.relative_to(self.root).as_posix()
+                self._segmentation_index_path = index_path
         except Exception:
-            for path in reversed(moved):
-                path.unlink(missing_ok=True)
-            video_directory = self.root / "videos" / episode_name
-            if video_directory.exists():
-                shutil.rmtree(video_directory)
+            self._restore_commit_moves(moved)
             raise
+        self._commit_moves = moved
         metadata = {
-            "dataset_schema_version": "1.1",
+            "dataset_schema_version": "1.2",
             "episode_id": self.episode_id,
             "robot": result.robot,
             "task_id": result.task_id,
@@ -332,6 +417,22 @@ class TrajectoryRecorder:
             "final_state_file": str(paths["final"].relative_to(self.root)),
             "trajectory_file": str(paths["trajectory"].relative_to(self.root)),
             "video_files": final_videos,
+            "array_files": final_arrays,
+            "segmentation_index_file": segmentation_index_file,
+            "depth_encoding": ({
+                "format": "npz", "key": "depth_m", "dtype": "float32",
+                "units": "meter", "width": self.schema["camera_schema"].get("width"),
+                "height": self.schema["camera_schema"].get("height"),
+                "background_convention": "MuJoCo metric depth at far clipping plane",
+                "znear": float(self.model.vis.map.znear),
+                "zfar": float(self.model.vis.map.zfar),
+                "model_extent": float(self.model.stat.extent),
+            } if "depth" in self.modalities else None),
+            "segmentation_encoding": ({
+                "format": "npz", "dtype": "int32",
+                "channels": ["object_id", "object_type"],
+                "background": [-1, -1],
+            } if "segmentation" in self.modalities else None),
             "initial_object_positions": result.initial_object_positions,
             "planned_target_position": result.planned_target_position,
             "target_adjusted": (

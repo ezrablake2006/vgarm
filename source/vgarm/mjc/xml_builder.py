@@ -7,6 +7,7 @@ from pathlib import Path
 from vgarm.reconstruction.types import SceneLayout, SimObject
 
 from .robots import RobotSpec
+import mujoco
 
 
 @dataclass(frozen=True)
@@ -83,3 +84,14 @@ def build_scene_xml(
     lines.append("  </equality>")
     lines.append("</mujoco>")
     return BuiltScene(xml_text="\n".join(lines) + "\n", object_names=tuple(object_names))
+
+
+def compile_scene_model(built: BuiltScene, robot: RobotSpec):
+    """Compile without writing into the external robot asset directory."""
+    base = robot.include_xml_path.resolve().parent
+    assets = {
+        path.relative_to(base).as_posix(): path.read_bytes()
+        for path in base.rglob("*")
+        if path.is_file() and not path.name.startswith("_vgarm_")
+    }
+    return mujoco.MjModel.from_xml_string(built.xml_text, assets=assets)

@@ -6,7 +6,7 @@ from .controller import (
     PickPlaceExecutor,
 )
 from .robots import RobotSpec, available_robots
-from .xml_builder import BuiltScene, build_scene_xml
+from .xml_builder import BuiltScene, build_scene_xml, compile_scene_model
 from .session import SimulationSession, ViewerClosed
 
 __all__ = [

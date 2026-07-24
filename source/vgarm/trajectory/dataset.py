@@ -2,29 +2,25 @@ from __future__ import annotations
 
 from dataclasses import asdict
 import json
-import os
 from pathlib import Path
 import shutil
-import tempfile
-
-import mujoco
 
 from vgarm import __version__
 from vgarm.benchmark.models import BenchmarkConfig
 from vgarm.benchmark.runner import BenchmarkRunner, load_tasks
-from vgarm.mjc import available_robots, build_scene_xml
+from vgarm.mjc import available_robots, build_scene_xml, compile_scene_model
 from vgarm.reconstruction import reconstruct_scene
 
 from .cameras import (
     DatasetConfigurationError,
     require_rgb_dependencies,
     validate_camera_names,
-    validate_rgb_configuration,
+    validate_visual_configuration,
 )
 from .models import DatasetConfig, FORMAT_NAME, SCHEMA_VERSION
 from .recorder import TrajectoryRecorder
 from .stats import compute_stats
-from .util import atomic_json, sha256_file, stable_hash
+from .util import atomic_json, atomic_text, sha256_file, stable_hash
 
 
 def config_payload(config: DatasetConfig, tasks) -> dict:
@@ -39,9 +35,13 @@ def config_payload(config: DatasetConfig, tasks) -> dict:
         "position_jitter": config.position_jitter,
         "modalities": list(config.modalities),
         "cameras": list(config.cameras),
-        "rgb_width": config.rgb_width if "rgb" in config.modalities else None,
-        "rgb_height": config.rgb_height if "rgb" in config.modalities else None,
-        "rgb_fps": config.rgb_fps if "rgb" in config.modalities else None,
+        "visual_width": config.visual_width if len(config.modalities) > 1 else None,
+        "visual_height": config.visual_height if len(config.modalities) > 1 else None,
+        "visual_fps": config.visual_fps if len(config.modalities) > 1 else None,
+        "visual_chunk_frames": config.visual_chunk_frames,
+        "visual_schedule": "first physics row at or after n/visual_fps",
+        "depth_encoding": "npz/float32/meter" if "depth" in config.modalities else None,
+        "segmentation_encoding": "npz/int32 object_id,object_type" if "segmentation" in config.modalities else None,
         "vgarm_version": __version__,
     }
 
@@ -66,7 +66,7 @@ def prepare_dataset(config: DatasetConfig, tasks) -> tuple[dict, set[int]]:
             raise DatasetConfigurationError(
                 "cannot resume: dataset configuration fingerprint differs"
             )
-    for directory in ("meta", "data", "states", "videos", "logs", ".incomplete"):
+    for directory in ("meta", "data", "states", "videos", "arrays", "logs", ".incomplete"):
         (root / directory).mkdir(parents=True, exist_ok=True)
     if not dataset_file.exists():
         atomic_json(dataset_file, {**payload, "config_fingerprint": fingerprint})
@@ -85,39 +85,40 @@ def prepare_dataset(config: DatasetConfig, tasks) -> tuple[dict, set[int]]:
 
 
 def preflight_dataset(config: DatasetConfig) -> None:
-    """Validate RGB configuration before creating output or running physics."""
-    validate_rgb_configuration(
+    """Validate visual configuration before creating output or running physics."""
+    validate_visual_configuration(
         config.modalities,
         config.cameras,
-        config.rgb_width,
-        config.rgb_height,
-        config.rgb_fps,
+        config.visual_width,
+        config.visual_height,
+        config.visual_fps,
+        config.visual_chunk_frames,
     )
-    if "rgb" not in config.modalities:
+    if len(config.modalities) == 1:
         return
-    require_rgb_dependencies()
     layout = reconstruct_scene(scene_json_path=str(config.scene))
+    scene_cameras = {item.name for item in layout.cameras}
+    missing = [item for item in config.cameras if item not in scene_cameras]
+    if missing:
+        choices = ", ".join(sorted(scene_cameras)) or "(none)"
+        raise DatasetConfigurationError(
+            f"unknown visual camera '{missing[0]}'; "
+            f"unknown RGB camera '{missing[0]}'; available cameras: {choices}"
+        )
+    if "rgb" in config.modalities:
+        require_rgb_dependencies()
     robot = available_robots()[config.robot]
+    if not robot.include_xml_path.is_file():
+        raise DatasetConfigurationError(
+            f"robot model assets are missing for {config.robot}; "
+            "set VGARM_MENAGERIE_ROOT"
+        )
     robot_directory = robot.include_xml_path.resolve().parent
     built = build_scene_xml(layout, robot, xml_base_dir=robot_directory)
-    # Nested Menagerie mesh paths are relative to the robot XML directory.
-    # The preflight XML lives there briefly, is never part of dataset output,
-    # and is removed on every success/failure path.
-    with tempfile.NamedTemporaryFile(
-        mode="w",
-        suffix=".xml",
-        prefix="_vgarm_camera_preflight_",
-        dir=robot_directory,
-        encoding="utf-8",
-        delete=False,
-    ) as stream:
-        stream.write(built.xml_text)
-        xml_path = Path(stream.name)
-    try:
-        model = mujoco.MjModel.from_xml_path(str(xml_path))
-        validate_camera_names(model, config.cameras)
-    finally:
-        xml_path.unlink(missing_ok=True)
+    # MuJoCo's virtual-file assets preserve the include/mesh/texture relative
+    # layout without writing a top-level XML into the external Menagerie.
+    model = compile_scene_model(built, robot)
+    validate_camera_names(model, config.cameras)
 
 
 def generate_dataset(config: DatasetConfig, *, viewer_factory=None) -> dict:
@@ -147,9 +148,10 @@ def generate_dataset(config: DatasetConfig, *, viewer_factory=None) -> dict:
                 viewer_enabled=not config.no_viewer,
                 modalities=config.modalities,
                 cameras=config.cameras,
-                rgb_width=config.rgb_width,
-                rgb_height=config.rgb_height,
-                rgb_fps=config.rgb_fps,
+                visual_width=config.visual_width,
+                visual_height=config.visual_height,
+                visual_fps=config.visual_fps,
+                visual_chunk_frames=config.visual_chunk_frames,
             )
         except Exception as error:
             recorder_errors[episode_id] = error
@@ -198,10 +200,15 @@ def generate_dataset(config: DatasetConfig, *, viewer_factory=None) -> dict:
                 model_xml_hash=recorder.model_xml_hash,
                 asset_manifest_hash=recorder.asset_manifest_hash,
             )
-            with episodes_path.open("a", encoding="utf-8") as stream:
-                stream.write(json.dumps(metadata, ensure_ascii=False) + "\n")
-                stream.flush()
-                os.fsync(stream.fileno())
+            existing_lines = (
+                episodes_path.read_text(encoding="utf-8")
+                if episodes_path.exists() else ""
+            )
+            atomic_text(
+                episodes_path,
+                existing_lines + json.dumps(metadata, ensure_ascii=False) + "\n",
+            )
+            recorder.finalize_commit()
             completed.add(episode_id)
             if config.verbose:
                 print(
@@ -210,10 +217,13 @@ def generate_dataset(config: DatasetConfig, *, viewer_factory=None) -> dict:
                 )
             if config.fail_fast and not result.task_success:
                 break
-        except KeyboardInterrupt:
+        except BaseException as error:
             recorder = recorders.get(episode_id)
             if recorder is not None:
-                recorder.abort("KeyboardInterrupt")
+                if getattr(recorder, "_commit_moves", None):
+                    recorder.rollback_commit(type(error).__name__)
+                else:
+                    recorder.abort(type(error).__name__)
             raise
     stats = compute_stats(config.root)
     atomic_json(config.root / "manifest.json", {

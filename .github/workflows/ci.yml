@@ -41,18 +41,23 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -e ".[rgb]"
 
-      - name: Check MuJoCo Menagerie
-        run: |
-          echo "VGARM_MENAGERIE_ROOT=$VGARM_MENAGERIE_ROOT"
-          test -d "$VGARM_MENAGERIE_ROOT"
-          test -d "$VGARM_MENAGERIE_ROOT/franka_fr3"
-          ls "$VGARM_MENAGERIE_ROOT/franka_fr3" | head
+      - name: Checkout MuJoCo Menagerie
+        uses: actions/checkout@v4
+        with:
+        repository: google-deepmind/mujoco_menagerie
+        ref: f809e257c7a2fd67805d0d87eb02fcc205948ef7
+        path: third_party/mujoco_menagerie
 
       - name: Run tests
         run: |
-          python -m unittest discover \
+          python -W error::ResourceWarning -m unittest discover \
             -s source/vgarm_app/tests \
             -p 'test_*.py'
+
+      - name: Real depth and segmentation rendering smoke
+        run: |
+          python -W error::ResourceWarning -m unittest \
+            vgarm_app.tests.test_trajectory.DepthSegmentationTests.test_metric_depth_segmentation_and_chunk_boundary
 
       - name: Check main CLI
         run: vgarm --help

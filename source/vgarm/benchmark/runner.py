@@ -19,6 +19,7 @@ from vgarm.mjc import (
     ViewerClosed,
     available_robots,
     build_scene_xml,
+    compile_scene_model,
 )
 from vgarm.mjc.controller import ControlFailure
 from vgarm.nlu import parse_cn
@@ -144,13 +145,11 @@ class BenchmarkRunner:
         robot = robots[robot_name]
         robot_directory = robot.include_xml_path.resolve().parent
         built = build_scene_xml(layout, robot, xml_base_dir=robot_directory)
-        xml_path = robot_directory / f"_vgarm_benchmark_{robot.robot_id}_{episode_seed}.xml"
-        xml_path.write_text(built.xml_text, encoding="utf-8")
         executor = None
         plan = None
         initial = {}
         try:
-            model = mujoco.MjModel.from_xml_path(str(xml_path))
+            model = compile_scene_model(built, robot)
             data = mujoco.MjData(model)
             with SimulationSession(
                 model,
@@ -206,11 +205,6 @@ class BenchmarkRunner:
                     name: executor.body_xy(name) for name in built.object_names
                 }
             raise
-        finally:
-            try:
-                xml_path.unlink()
-            except FileNotFoundError:
-                pass
 
     def _run_one(
         self, episode_id: int, robot: str, task: TaskSpec, episode_seed: int

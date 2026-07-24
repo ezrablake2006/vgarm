@@ -72,3 +72,13 @@ VGArm 0.1.2 Release
 注意事项
 - 需要MuJoCo 3.x与Menagerie机器人资产，路径需与 vgarm/mjc/robots.py 中配置一致
 - SceneLayout JSON规范与坐标系/单位：见 vgarm/docs/scene_schema.md
+0.4.1
+-----
+Added schema 1.2 metric-depth and raw MuJoCo instance/object segmentation
+recording, synchronized with RGB and state/action at the existing pre-step
+hook. Added bounded compressed NPZ chunks, checksums, label manifests, reader
+APIs, validation/statistics support, neutral visual CLI options, and retained
+schema 1.0/1.1 and --rgb-* compatibility.
+Release-candidate hardening uses 64-frame default chunks, closes imageio-ffmpeg
+subprocess pipes explicitly, compiles Menagerie assets from MuJoCo's in-memory
+asset dictionary, and rolls formal artifacts back if episode metadata fails.

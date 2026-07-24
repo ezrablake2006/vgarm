@@ -1,5 +1,13 @@
 # VGArm
 
+VGArm 0.4.1 can record synchronized RGB, metric depth (meters), and raw
+MuJoCo segmentation object IDs/types from named virtual cameras. Visual
+frames, simulator state, and the action used by the next physics step are
+strictly pre-step aligned. These are dataset-recording capabilities: the
+controller still uses simulator ground-truth state. RGB/depth/segmentation do
+not participate in control; visual closed-loop control, object detection,
+behavior cloning, world models, and VLA policies are not implemented.
+
 VGArm 是一个基于 MuJoCo 的轻量级、可复现、语言条件多机械臂操作与轨迹数据生成工具。它将场景 JSON、中文指令解析、机器人场景构建、可靠抓放控制、benchmark 和逐物理步状态—动作记录串联起来，可驱动 Franka、UR5e 和 Kinova 等机器人模型。
 
 ## 当前环境

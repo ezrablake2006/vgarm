@@ -15,10 +15,10 @@ def build_schema(
         executor.model.actuator(joint.actuator_id).name for joint in executor._actuated
     ]
     return {
-        "dataset_schema_version": "1.1",
-        "compatible_schema_versions": ["1.0", "1.1"],
+        "dataset_schema_version": "1.2",
+        "compatible_schema_versions": ["1.0", "1.1", "1.2"],
         "time_alignment": (
-            "(I_t, o_t, a_t) -> o_{t+1}; state/action and optional RGB "
+            "(I_t, D_t, S_t, o_t, a_t) -> o_{t+1}; state/action and visual data "
             "are sampled immediately before mj_step"
         ),
         "physics_timestep": float(executor.model.opt.timestep),
@@ -31,10 +31,10 @@ def build_schema(
         "modalities": list(modalities),
         "camera_schema": camera_schema or {},
         "visual_observation": {
-            "rgb_frame_index": (
-                "zero-based shared video frame index; null on unsampled rows"
+            "frame_index": (
+                "zero-based shared visual frame index; null on unsampled rows"
             ),
-            "rgb_timestamp": (
+            "timestamp": (
                 "MuJoCo time of the same pre-step physics row; null when unsampled"
             ),
         },

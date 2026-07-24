@@ -7,7 +7,8 @@ from pathlib import Path
 import mujoco
 import numpy as np
 
-from vgarm.mjc import SimulationSession, available_robots, build_scene_xml
+from vgarm.mjc import (
+    SimulationSession, available_robots, build_scene_xml, compile_scene_model)
 from vgarm.benchmark.randomization import jitter_scene
 from vgarm.reconstruction import reconstruct_scene
 
@@ -98,12 +99,13 @@ def replay_trajectory(
     built = build_scene_xml(layout, robot, xml_base_dir=directory)
     if stable_hash(built.xml_text) != metadata["model_xml_hash"]:
         raise ValueError("rebuilt model XML hash differs from recorded episode")
-    xml_path = directory / f"_vgarm_trajectory_replay_{episode_id}.xml"
-    xml_path.write_text(built.xml_text, encoding="utf-8")
+    model = compile_scene_model(built, robot)
     try:
-        model = mujoco.MjModel.from_xml_path(str(xml_path))
         data = mujoco.MjData(model)
-        initial = np.load(root / metadata["initial_state_file"])
+        with np.load(
+            root / metadata["initial_state_file"], allow_pickle=False
+        ) as loaded:
+            initial = {key: loaded[key].copy() for key in loaded.files}
         specification = mujoco.mjtState(int(initial["state_spec"][0]))
         mujoco.mj_setState(model, data, initial["state_vector"], specification)
         data.ctrl[:] = initial["ctrl"]
@@ -157,9 +159,10 @@ def replay_trajectory(
                 data.ctrl[:] = row["action"]["ctrl"]
                 mujoco.mj_step(model, data)
                 session.sync()
-            final_expected = json.loads(str(
-                np.load(root / metadata["final_state_file"])["observation_json"]
-            ))
+            with np.load(
+                root / metadata["final_state_file"], allow_pickle=False
+            ) as loaded:
+                final_expected = json.loads(str(loaded["observation_json"]))
             final_current = _state(
                 model, data, schema, robot, metadata["object_names"]
             )
@@ -203,12 +206,27 @@ def replay_trajectory(
             "matched": matched,
             "final_task_verification": metadata["verification"],
             "has_rgb": "rgb" in metadata.get("recording_modalities", []),
+            "has_depth": "depth" in metadata.get("recording_modalities", []),
+            "has_segmentation": "segmentation" in metadata.get("recording_modalities", []),
             "rgb_frame_count": (
                 next(iter(metadata.get("video_files", {}).values()))[
                     "frame_count"
                 ]
                 if metadata.get("video_files") else 0
             ),
+            "depth_frame_count": sum(
+                shard["frame_count"]
+                for shard in next(iter(
+                    metadata.get("array_files", {}).values()), {}).get(
+                        "depth", [])
+            ),
+            "segmentation_frame_count": sum(
+                shard["frame_count"]
+                for shard in next(iter(
+                    metadata.get("array_files", {}).values()), {}).get(
+                        "segmentation", [])
+            ),
         }
     finally:
-        xml_path.unlink(missing_ok=True)
+        # SimulationSession and NPZ contexts own all external resources.
+        pass

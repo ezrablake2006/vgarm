@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import math
 from pathlib import Path
+import zipfile
 
 import numpy as np
 
@@ -34,7 +35,7 @@ def validate_dataset(root: Path) -> dict:
         }
     dataset = json.loads(dataset_file.read_text(encoding="utf-8"))
     schema = json.loads(schema_file.read_text(encoding="utf-8"))
-    supported = {"1.0", "1.1"}
+    supported = {"1.0", "1.1", "1.2"}
     if (
         dataset.get("schema_version") not in supported
         or schema.get("dataset_schema_version") not in supported
@@ -43,6 +44,7 @@ def validate_dataset(root: Path) -> dict:
     dataset_modalities = dataset.get("modalities", ["state"])
     dataset_cameras = dataset.get("cameras", [])
     declared_video_paths = set()
+    declared_array_paths = set()
     episodes = read_episodes(root)
     ids = [item["episode_id"] for item in episodes]
     if len(ids) != len(set(ids)):
@@ -102,6 +104,97 @@ def validate_dataset(root: Path) -> dict:
                 episode_errors.append("RGB cameras have different frame counts")
         elif videos:
             episode_errors.append("state-only episode unexpectedly declares videos")
+        array_sequences = []
+        observed_segmentation_pairs = set()
+        for camera, modalities in episode.get("array_files", {}).items():
+            for modality, shards in modalities.items():
+                expected_chunk = 0
+                sequence = []
+                for shard in shards:
+                    path = root / shard.get("path", "")
+                    declared_array_paths.add(path.resolve())
+                    if path.name != f"chunk_{expected_chunk:06d}.npz":
+                        episode_errors.append(f"{camera}/{modality}: non-contiguous chunk names")
+                    expected_chunk += 1
+                    if not path.is_file():
+                        episode_errors.append(f"{camera}/{modality}: missing chunk")
+                        continue
+                    if sha256_file(path) != shard.get("sha256"):
+                        episode_errors.append(f"{camera}/{modality}: chunk checksum mismatch")
+                        continue
+                    if path.stat().st_size != shard.get("bytes"):
+                        episode_errors.append(f"{camera}/{modality}: chunk byte size mismatch")
+                    try:
+                        with path.open("rb") as stream, np.load(
+                            stream, allow_pickle=False) as data:
+                            required = {"frame_index", "timestamp", "physics_row"}
+                            required |= {"depth_m"} if modality == "depth" else {
+                                "object_id", "object_type"}
+                            if not required.issubset(data.files):
+                                raise ValueError("required arrays missing")
+                            if data["frame_index"].dtype != np.int64:
+                                raise ValueError("frame_index dtype is not int64")
+                            count = len(data["frame_index"])
+                            if any(len(data[key]) != count for key in required):
+                                raise ValueError("array lengths differ")
+                            if modality == "depth":
+                                value = data["depth_m"]
+                                if value.dtype != np.float32:
+                                    raise ValueError("depth dtype is not float32")
+                                if value.ndim != 3:
+                                    raise ValueError("depth shape is invalid")
+                                expected_shape = (
+                                    int(dataset.get("visual_height", value.shape[1])),
+                                    int(dataset.get("visual_width", value.shape[2])),
+                                )
+                                if value.shape[1:] != expected_shape:
+                                    raise ValueError(
+                                        "depth shape differs from visual resolution")
+                                if not np.isfinite(value).all():
+                                    raise ValueError("depth contains NaN or infinity")
+                            else:
+                                for key in ("object_id", "object_type"):
+                                    if data[key].dtype != np.int32:
+                                        raise ValueError(f"{key} dtype is not int32")
+                                    if data[key].ndim != 3:
+                                        raise ValueError(f"{key} shape is invalid")
+                                    expected_shape = (
+                                        int(dataset.get(
+                                            "visual_height", data[key].shape[1])),
+                                        int(dataset.get(
+                                            "visual_width", data[key].shape[2])),
+                                    )
+                                    if data[key].shape[1:] != expected_shape:
+                                        raise ValueError(
+                                            f"{key} shape differs from visual resolution")
+                                observed_segmentation_pairs.update(zip(
+                                    data["object_id"].reshape(-1).tolist(),
+                                    data["object_type"].reshape(-1).tolist()))
+                            sequence.extend(zip(
+                                data["frame_index"].astype(int).tolist(),
+                                data["physics_row"].astype(int).tolist(),
+                                data["timestamp"].astype(float).tolist()))
+                    except (
+                        OSError, ValueError, EOFError, zipfile.BadZipFile
+                    ) as error:
+                        episode_errors.append(f"{camera}/{modality}: invalid chunk: {error}")
+                array_sequences.append((camera, modality, sequence))
+        if "segmentation" in episode_modalities:
+            index = episode.get("segmentation_index_file")
+            if not index or not (root / index).is_file():
+                episode_errors.append("segmentation label manifest missing")
+            else:
+                try:
+                    label_data = json.loads((root / index).read_text(encoding="utf-8"))
+                    declared = {
+                        (int(x["object_id"]), int(x["object_type"]))
+                        for x in label_data["labels"] if x.get("observed")
+                    }
+                    if declared != observed_segmentation_pairs:
+                        episode_errors.append(
+                            "segmentation observed pairs differ from label manifest")
+                except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError):
+                    episode_errors.append("segmentation label manifest is invalid")
         if episode_errors:
             invalid.append(episode["episode_id"])
             errors.extend(
@@ -137,25 +230,27 @@ def validate_dataset(root: Path) -> dict:
                 ):
                     episode_errors.append("timestamp is not strictly timestep-aligned")
                     break
-        if "rgb" in episode_modalities:
+        if any(item != "state" for item in episode_modalities):
             mappings = [
                 (index, row.get("visual_observation"))
                 for index, row in enumerate(rows)
                 if row.get("visual_observation") is not None
             ]
-            mapped_indices = [
-                int(mapping["rgb_frame_index"]) for _, mapping in mappings
-            ]
-            expected_count = (
-                next(iter(videos.values()))["frame_count"] if videos else 0
-            )
+            index_key = "frame_index"
+            timestamp_key = "timestamp"
+            mapped_indices = [int(mapping[index_key]) for _, mapping in mappings]
+            counts = [item["frame_count"] for item in videos.values()]
+            counts += [len(sequence) for _, _, sequence in array_sequences]
+            expected_count = counts[0] if counts else 0
+            if len(set(counts)) > 1:
+                episode_errors.append("visual modalities/cameras have different frame counts")
             if mapped_indices != list(range(expected_count)):
                 episode_errors.append(
                     "RGB frame mapping is not unique and continuous from zero"
                 )
             previous_timestamp = None
             for row_index, mapping in mappings:
-                timestamp = float(mapping["rgb_timestamp"])
+                timestamp = float(mapping[timestamp_key])
                 if previous_timestamp is not None and timestamp <= previous_timestamp:
                     episode_errors.append("RGB timestamps are not strictly increasing")
                     break
@@ -170,6 +265,15 @@ def validate_dataset(root: Path) -> dict:
                     )
                     break
                 previous_timestamp = timestamp
+            expected_sequence = [
+                (int(mapping[index_key]), row_index, float(mapping[timestamp_key]))
+                for row_index, mapping in mappings
+            ]
+            for camera, modality, sequence in array_sequences:
+                if sequence != expected_sequence:
+                    episode_errors.append(
+                        f"{camera}/{modality}: frame mapping differs from Parquet"
+                    )
         elif schema.get("dataset_schema_version") == "1.1":
             if any(row.get("visual_observation") is not None for row in rows):
                 episode_errors.append("state-only trajectory contains RGB mappings")
@@ -178,20 +282,24 @@ def validate_dataset(root: Path) -> dict:
                 episode_errors.append("last row termination flags are invalid")
             if bool(rows[-1]["success"]) != bool(episode["success"]):
                 episode_errors.append("success does not match episode metadata")
-            initial = np.load(root / episode["initial_state_file"])
-            final = np.load(root / episode["final_state_file"])
-            if "observation_json" not in initial or "observation_json" not in final:
-                episode_errors.append("initial or final observation missing")
-            else:
-                initial_observation = json.loads(str(initial["observation_json"]))
-                first_observation = dict(rows[0]["observation"])
-                # Controller writes a_0 after the initial state snapshot and
-                # before the pre-step hook.  observation.ctrl therefore
-                # intentionally equals a_0 rather than the snapshot ctrl.
-                initial_observation.pop("ctrl", None)
-                first_observation.pop("ctrl", None)
-                if initial_observation != first_observation:
-                    episode_errors.append("first observation does not match initial state")
+            with np.load(
+                root / episode["initial_state_file"], allow_pickle=False
+            ) as initial, np.load(
+                root / episode["final_state_file"], allow_pickle=False
+            ) as final:
+                if "observation_json" not in initial or "observation_json" not in final:
+                    episode_errors.append("initial or final observation missing")
+                else:
+                    initial_observation = json.loads(str(initial["observation_json"]))
+                    first_observation = dict(rows[0]["observation"])
+                    # Controller writes a_0 after the initial state snapshot and
+                    # before the pre-step hook. observation.ctrl therefore
+                    # intentionally equals a_0 rather than snapshot ctrl.
+                    initial_observation.pop("ctrl", None)
+                    first_observation.pop("ctrl", None)
+                    if initial_observation != first_observation:
+                        episode_errors.append(
+                            "first observation does not match initial state")
         if episode["joint_names"] != schema["joint_names"]:
             episode_errors.append("joint ordering mismatch")
         if episode["actuator_names"] != schema["actuator_names"]:
@@ -214,6 +322,14 @@ def validate_dataset(root: Path) -> dict:
             "undeclared video file(s): "
             + ", ".join(str(path.relative_to(root.resolve())) for path in sorted(orphaned))
         )
+    actual_arrays = {
+        path.resolve() for path in (root / "arrays").rglob("*.npz")
+        if path.is_file()
+    }
+    orphan_arrays = actual_arrays - declared_array_paths
+    if orphan_arrays:
+        errors.append("undeclared array chunk(s): " + ", ".join(
+            str(path.relative_to(root.resolve())) for path in sorted(orphan_arrays)))
     if "rgb" in dataset_modalities and not dataset_cameras:
         errors.append("RGB dataset does not declare cameras")
     return {

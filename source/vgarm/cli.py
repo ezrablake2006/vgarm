@@ -267,7 +267,7 @@ def _dataset_main(argv: list[str]) -> int:
         from vgarm.trajectory.cameras import (
             DatasetConfigurationError,
             require_rgb_dependencies,
-            validate_rgb_configuration,
+            validate_visual_configuration,
         )
 
         parser = argparse.ArgumentParser(prog="vgarm dataset generate")
@@ -279,9 +279,13 @@ def _dataset_main(argv: list[str]) -> int:
         parser.add_argument("--position-jitter", type=float, default=0.0)
         parser.add_argument("--modalities", default="state")
         parser.add_argument("--cameras", default="")
-        parser.add_argument("--rgb-width", type=int, default=640)
-        parser.add_argument("--rgb-height", type=int, default=480)
-        parser.add_argument("--rgb-fps", type=float, default=20.0)
+        parser.add_argument("--visual-width", type=int)
+        parser.add_argument("--visual-height", type=int)
+        parser.add_argument("--visual-fps", type=float)
+        parser.add_argument("--rgb-width", type=int, help=argparse.SUPPRESS)
+        parser.add_argument("--rgb-height", type=int, help=argparse.SUPPRESS)
+        parser.add_argument("--rgb-fps", type=float, help=argparse.SUPPRESS)
+        parser.add_argument("--visual-chunk-frames", type=int, default=64)
         viewer = parser.add_mutually_exclusive_group()
         viewer.add_argument("--viewer", dest="no_viewer", action="store_false")
         viewer.add_argument("--no-viewer", dest="no_viewer", action="store_true")
@@ -298,24 +302,39 @@ def _dataset_main(argv: list[str]) -> int:
             parser.error("--episodes must be greater than zero")
         if args.position_jitter < 0:
             parser.error("--position-jitter must be non-negative")
-        modalities = tuple(
-            item.strip() for item in args.modalities.split(",") if item.strip()
-        )
-        cameras = tuple(
-            item.strip() for item in args.cameras.split(",") if item.strip()
-        )
+        raw_modalities = [item.strip() for item in args.modalities.split(",")]
+        raw_cameras = [item.strip() for item in args.cameras.split(",")]
+        modalities = tuple(item for item in raw_modalities if item)
+        cameras = tuple(item for item in raw_cameras if item)
+        def compatible(new, old, default, new_name, old_name):
+            if new is not None and old is not None and new != old:
+                parser.error(
+                    f"{new_name} and compatibility alias {old_name} differ"
+                )
+            return new if new is not None else old if old is not None else default
+        width = compatible(args.visual_width, args.rgb_width, 640,
+                           "--visual-width", "--rgb-width")
+        height = compatible(args.visual_height, args.rgb_height, 480,
+                            "--visual-height", "--rgb-height")
+        fps = compatible(args.visual_fps, args.rgb_fps, 20.0,
+                         "--visual-fps", "--rgb-fps")
         try:
-            validate_rgb_configuration(
+            validate_visual_configuration(
                 modalities,
                 cameras,
-                args.rgb_width,
-                args.rgb_height,
-                args.rgb_fps,
+                width,
+                height,
+                fps,
+                args.visual_chunk_frames,
             )
             if "rgb" in modalities:
                 require_rgb_dependencies()
         except DatasetConfigurationError as error:
             parser.error(str(error))
+        modalities = tuple(
+            item for item in ("state", "rgb", "depth", "segmentation")
+            if item in modalities
+        )
         robots = tuple(
             item.strip() for item in args.robots.split(",") if item.strip()
         )
@@ -337,9 +356,10 @@ def _dataset_main(argv: list[str]) -> int:
                 position_jitter=args.position_jitter,
                 modalities=modalities,
                 cameras=cameras,
-                rgb_width=args.rgb_width,
-                rgb_height=args.rgb_height,
-                rgb_fps=args.rgb_fps,
+                visual_width=width,
+                visual_height=height,
+                visual_fps=fps,
+                visual_chunk_frames=args.visual_chunk_frames,
                 no_viewer=args.no_viewer,
                 overwrite=args.overwrite,
                 resume=args.resume,
@@ -384,7 +404,29 @@ def _dataset_main(argv: list[str]) -> int:
                 (args.dataset / "meta" / "dataset.json").read_text()
             )
             episodes = read_episodes(args.dataset)
+            artifacts = {"rgb": {"files": 0, "bytes": 0},
+                         "depth": {"files": 0, "bytes": 0},
+                         "segmentation": {"files": 0, "bytes": 0}}
+            for episode in episodes:
+                for video in episode.get("video_files", {}).values():
+                    artifacts["rgb"]["files"] += 1
+                    artifacts["rgb"]["bytes"] += int(video["bytes"])
+                for modalities in episode.get("array_files", {}).values():
+                    for modality, shards in modalities.items():
+                        artifacts[modality]["files"] += len(shards)
+                        artifacts[modality]["bytes"] += sum(
+                            int(shard["bytes"]) for shard in shards)
             print(json.dumps({
+                "schema_version": dataset.get("schema_version"),
+                "modalities": dataset.get("modalities", ["state"]),
+                "cameras": dataset.get("cameras", []),
+                "visual_width": dataset.get("visual_width"),
+                "visual_height": dataset.get("visual_height"),
+                "visual_fps": dataset.get("visual_fps"),
+                "visual_chunk_frames": dataset.get("visual_chunk_frames"),
+                "depth_encoding": dataset.get("depth_encoding"),
+                "segmentation_encoding": dataset.get("segmentation_encoding"),
+                "artifacts": artifacts,
                 "dataset": dataset,
                 "episodes": len(episodes),
                 "completed_episode_ids": [item["episode_id"] for item in episodes],

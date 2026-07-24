@@ -168,3 +168,32 @@ loader. It never constructs a look-alike directory. LeRobot is not installed
 in the project Python 3.14 validation environment, so conversion should be run
 in a separate LeRobot-supported environment. Native recording remains the
 source of truth.
+# VGArm trajectory dataset schema 1.2
+
+VGArm 0.4.1 records `state`, `rgb`, `depth`, and `segmentation`. Every visual
+frame uses the same rational schedule and is rendered before the associated
+`mj_step`:
+
+```
+(I_t, D_t, S_t, o_t, a_t) -> o_(t+1)
+```
+
+`visual_observation.frame_index` and `.timestamp` are null on unsampled
+physics rows. Schema 1.1's `rgb_frame_index` and `rgb_timestamp` remain
+readable as legacy aliases; new files contain only the neutral fields.
+
+RGB remains H.264/yuv420p MP4. Depth is raw metric `float32` in meters.
+Segmentation stores MuJoCo's raw `int32` `(object_id, object_type)` channels.
+Depth and segmentation use compressed NPZ chunks under
+`arrays/episode_XXXXXX/CAMERA/MODALITY/chunk_XXXXXX.npz`. Each chunk also
+contains `frame_index`, `physics_row`, and `timestamp`; loading always uses
+`allow_pickle=False`. The default is 64 frames per chunk and can be changed
+with `--visual-chunk-frames`; the final chunk may be shorter.
+
+Use `open_episode(...).read_depth(...)` and `.read_segmentation(...)` for
+single frames or slices. The label manifest preserves background `(-1,-1)`,
+unknown IDs, MuJoCo enum names, and resolvable model object names.
+
+Visual dimensions and rate use `--visual-width`, `--visual-height`, and
+`--visual-fps`. The old `--rgb-*` spellings are compatible aliases. Only RGB
+requires `vgarm[rgb]`; raw depth and segmentation need no image library.

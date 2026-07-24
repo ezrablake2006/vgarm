@@ -44,9 +44,9 @@ jobs:
       - name: Checkout MuJoCo Menagerie
         uses: actions/checkout@v4
         with:
-        repository: google-deepmind/mujoco_menagerie
-        ref: f809e257c7a2fd67805d0d87eb02fcc205948ef7
-        path: third_party/mujoco_menagerie
+          repository: google-deepmind/mujoco_menagerie
+          ref: f809e257c7a2fd67805d0d87eb02fcc205948ef7
+          path: third_party/mujoco_menagerie
 
       - name: Run tests
         run: |

@@ -79,7 +79,9 @@ jobs:
         run: vgarm benchmark --help
 
       - name: Check dataset CLI
-        run: vgarm dataset --help
+        run: |
+          vgarm dataset generate --help
+          vgarm dataset validate --help
 
       - name: Check whitespace
         run: git diff --check
